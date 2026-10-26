@@ -826,5 +826,48 @@ addMedicine();
 
 </script>
 
+<!-- FIREBASE PHÒNG KHÁM NHI PHƯƠNG NGA -->
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyB7LMfWderXIZCkw1SXHoRw5V-ixQfPPxc",
+  authDomain: "phuong-nga-clinic.firebaseapp.com",
+  projectId: "phuong-nga-clinic",
+  storageBucket: "phuong-nga-clinic.firebasestorage.app",
+  messagingSenderId: "765572145331",
+  appId: "1:765572145331:web:2afcbfbc6bd45e92c0d0c6",
+  measurementId: "G-5LR2H8XSNJ"
+};
+
+// Khởi tạo Firebase
+if (!firebase.apps.length) {
+  firebase.initializeApp(firebaseConfig);
+}
+
+// Kết nối đăng nhập
+const auth = firebase.auth();
+
+// Kết nối cơ sở dữ liệu
+const db = firebase.firestore();
+
+// Kiểm tra Firebase
+console.log("Firebase đã kết nối");
+
+// Kiểm tra trạng thái đăng nhập
+auth.onAuthStateChanged(function(user) {
+  if (user) {
+    console.log("Đã đăng nhập:", user.email);
+  } else {
+    console.log("Chưa đăng nhập");
+  }
+});
+</script>
+
 </body>
 </html>
