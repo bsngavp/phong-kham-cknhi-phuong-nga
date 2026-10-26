@@ -46,7 +46,20 @@ body{background:white}
   <input id="loginPassword" type="password" placeholder="Nhập mật khẩu">
   <button onclick="loginFirebase()">Đăng nhập</button>
   <p id="loginMessage"></p>
+</div> 
+<!-- KHU VỰC TÀI KHOẢN -->
+<div id="accountBox"
+     class="card"
+     style="display:none;max-width:450px;margin:20px auto">
+
+  <p id="accountEmail"></p>
+
+  <button onclick="logoutFirebase()">
+    Đăng xuất
+  </button>
+
 </div>
+
 <main>
 
 <nav class="no-print">
@@ -893,18 +906,53 @@ function loginFirebase() {
       message.textContent = "Lỗi đăng nhập: " + error.message;
     });
 }
+function logoutFirebase() {
+
+  auth.signOut()
+    .then(function() {
+
+      alert("Đã đăng xuất thành công");
+
+    })
+    .catch(function(error) {
+
+      alert("Lỗi đăng xuất: " + error.message);
+
+    });
+
+}
 
 auth.onAuthStateChanged(function(user) {
+
   const loginBox = document.getElementById("loginBox");
+  const accountBox = document.getElementById("accountBox");
+  const accountEmail = document.getElementById("accountEmail");
 
   if (user) {
+
+    // Đã đăng nhập
     loginBox.style.display = "none";
+    accountBox.style.display = "block";
+
+    accountEmail.textContent =
+      "Tài khoản: " + user.email;
+
     console.log("Đã đăng nhập:", user.email);
+
   } else {
+
+    // Chưa đăng nhập
     loginBox.style.display = "block";
+    accountBox.style.display = "none";
+
+    accountEmail.textContent = "";
+
     console.log("Chưa đăng nhập");
+
   }
+
 });
+
 
 </script>
 
