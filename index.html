@@ -925,6 +925,11 @@ function logoutFirebase() {
 auth.onAuthStateChanged(function(user) {
 
   const loginBox = document.getElementById("loginBox");
+  const loginMessage =
+  document.getElementById("loginMessage");
+
+const loginPassword =
+  document.getElementById("loginPassword");
   const accountBox = document.getElementById("accountBox");
   const accountEmail = document.getElementById("accountEmail");
 
@@ -941,15 +946,19 @@ auth.onAuthStateChanged(function(user) {
 
   } else {
 
-    // Chưa đăng nhập
-    loginBox.style.display = "block";
-    accountBox.style.display = "none";
 
-    accountEmail.textContent = "";
+  loginBox.style.display = "block";
+  accountBox.style.display = "none";
 
-    console.log("Chưa đăng nhập");
+  accountEmail.textContent = "";
 
-  }
+  loginMessage.textContent = "";
+
+  loginPassword.value = "";
+
+  console.log("Chưa đăng nhập");
+
+}
 
 });
 
