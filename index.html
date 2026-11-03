@@ -326,73 +326,70 @@ el("form").onsubmit = async function(e) {
 // HIỂN THỊ LỊCH HẸN
 // =======================
 
-function render(){
+function render() {
 
-let box = el("appointments");
+    let box = el("appointments");
+    box.innerHTML = "";
 
-box.innerHTML = "";
+    if (data.length === 0) {
+        box.textContent = "Chưa có lịch hẹn";
+        return;
+    }
 
-if(data.length === 0){
-box.textContent = "Chưa có lịch hẹn";
-return;
+    data.slice().reverse().forEach(x => {
+
+        let div = document.createElement("div");
+        div.className = "item";
+
+        let title = document.createElement("b");
+        title.textContent = "STT " + x.queue + " — " + x.child;
+
+        let info = document.createElement("p");
+        info.textContent = x.date + " • " + x.time + " • " + x.phone;
+
+        let status = document.createElement("select");
+
+        ["Chờ khám", "Đang khám", "Đã khám", "Hủy"].forEach(s => {
+            let o = document.createElement("option");
+            o.value = s;
+            o.textContent = s;
+            o.selected = s === x.status;
+            status.appendChild(o);
+        });
+
+        status.onchange = async function() {
+
+            if (!x.firebaseId) {
+                alert("Chưa xác định được lịch hẹn trên Firebase.");
+                return;
+            }
+
+            try {
+                await db.collection("appointments")
+                    .doc(x.firebaseId)
+                    .update({ status: status.value });
+
+            } catch (error) {
+                alert("Không cập nhật được: " + error.message);
+            }
+        };
+
+        let btn = document.createElement("button");
+        btn.textContent = "Khám bệnh";
+
+        btn.onclick = function() {
+            show("exam");
+            el("patientSelect").value = String(x.id || "");
+            loadPatient(x.id);
+        };
+
+        div.append(title, info, status, btn);
+        box.appendChild(div);
+
+    });
 }
 
-data.slice().reverse().forEach(x=>{
 
-let div = document.createElement("div");
-div.className = "item";
-
-let title = document.createElement("b");
-title.textContent = "STT " + x.queue + " — " + x.child;
-
-let info = document.createElement("p");
-info.textContent = x.date + " • " + x.time + " • " + x.phone;
-
-let status = document.createElement("select");
-
-["Chờ khám","Đang khám","Đã khám","Hủy"].forEach(s=>{
-
-let o = document.createElement("option");
-
-o.value = s;
-o.textContent = s;
-o.selected = s === x.status;
-
-status.appendChild(o);
-
-});
-
-status.onchange = function(){
-
-x.status = status.value;
-
-save();
-
-render();
-
-};
-
-let btn = document.createElement("button");
-
-btn.textContent = "Khám bệnh";
-
-btn.onclick = function(){
-
-show("exam");
-
-el("patientSelect").value = String(x.id);
-
-loadPatient(x.id);
-
-};
-
-div.append(title,info,status,btn);
-
-box.appendChild(div);
-
-});
-
-}
 
 // =======================
 // CHỌN BỆNH NHI
