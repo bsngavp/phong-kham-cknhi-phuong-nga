@@ -286,37 +286,42 @@ renderHistory();
 // ĐẶT LỊCH
 // =======================
 
-el("form").onsubmit = function(e){
+el("form").onsubmit = async function(e) {
+  e.preventDefault();
 
-e.preventDefault();
+  if (!auth.currentUser) {
+    el("result").textContent = "Vui lòng đăng nhập trước.";
+    return;
+  }
 
-let d = el("date").value;
+  const d = el("date").value;
+  const queue = data.filter(x => x.date === d).length + 1;
 
-let queue = data.filter(x=>x.date === d).length + 1;
+  const item = {
+    queue: queue,
+    child: el("child").value.trim(),
+    parent: el("parent").value.trim(),
+    phone: el("phone").value.trim(),
+    date: d,
+    time: el("time").value,
+    reason: el("reason").value,
+    status: "Chờ khám",
+    createdAt: firebase.firestore.FieldValue.serverTimestamp()
+  };
 
-let item = {
-id:Date.now(),
-queue:queue,
-child:el("child").value,
-parent:el("parent").value,
-phone:el("phone").value,
-date:d,
-time:el("time").value,
-reason:el("reason").value,
-status:"Chờ khám"
+  try {
+    await db.collection("appointments").add(item);
+
+    el("result").textContent =
+      "Đăng ký lịch khám thành công!";
+
+    this.reset();
+
+  } catch (error) {
+    el("result").textContent =
+      "Lỗi lưu lịch: " + error.message;
+  }
 };
-
-data.push(item);
-
-save();
-
-el("result").textContent =
-"Đăng ký thành công. Số thứ tự: " + queue;
-
-this.reset();
-
-};
-
 // =======================
 // HIỂN THỊ LỊCH HẸN
 // =======================
