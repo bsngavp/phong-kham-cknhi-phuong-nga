@@ -924,8 +924,10 @@ function logoutFirebase() {
 
 }
 
-auth.onAuthStateChanged(function(user) {
 
+let stopAppointments = null;
+
+auth.onAuthStateChanged(function(user) {
   const loginBox = document.getElementById("loginBox");
   const loginMessage =
   document.getElementById("loginMessage");
@@ -945,7 +947,29 @@ const loginPassword =
       "Tài khoản: " + user.email;
 
     console.log("Đã đăng nhập:", user.email);
+// ĐỌC LỊCH HẸN TỪ FIREBASE
+if (stopAppointments) {
+    stopAppointments();
+}
 
+stopAppointments = db.collection("appointments").onSnapshot(
+    function(snapshot) {
+        data = snapshot.docs.map(function(doc) {
+            return {
+                ...doc.data(),
+                firebaseId: doc.id,
+                id: doc.id
+            };
+        });
+
+        render();
+        populatePatients();
+    },
+    function(error) {
+        console.error("Lỗi đọc lịch hẹn:", error);
+        alert("Không tải được lịch hẹn: " + error.message);
+    }
+);
   } else {
 
 
@@ -959,7 +983,14 @@ const loginPassword =
   loginPassword.value = "";
 
   console.log("Chưa đăng nhập");
+if (stopAppointments) {
+    stopAppointments();
+    stopAppointments = null;
+}
 
+data = [];
+render();
+populatePatients();
 }
 
 });
