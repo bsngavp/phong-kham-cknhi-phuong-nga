@@ -32,7 +32,7 @@ nav{display:flex;gap:7px;flex-wrap:wrap;margin:12px 0}nav button{flex:1 1 140px;
       <div><label for="parent">Họ tên người đưa trẻ đến khám *</label><input id="parent" required maxlength="100"></div>
       <div><label for="phone">Số điện thoại *</label><input id="phone" type="tel" required maxlength="20" autocomplete="tel"></div>
       <div><label for="date">Ngày khám *</label><input id="date" type="date" required></div>
-      <div><label for="time">Giờ khám *</label><input id="time" type="time" required></div>
+      <div><label for="time">Giờ hẹn khám * (các lượt cách nhau 15 phút)</label><select id="time" required><option value="">-- Chọn ngày khám trước --</option></select><small class="muted">15 phút là khoảng cách giữa hai giờ hẹn, không phải thời lượng khám. Bác sĩ tiếp tục khám bệnh nhân cuối cùng cho đến khi hoàn tất, không bắt buộc kết thúc lúc 19:45 hoặc 20:00.</small></div>
     </div>
     <label for="reason">Lý do khám</label><textarea id="reason" rows="2" maxlength="1000"></textarea>
     <button id="bookingSubmit" type="submit">Đăng ký lịch khám</button>
@@ -197,6 +197,40 @@ function todayLocal() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
+
+// Tạo giờ hẹn theo lịch làm việc của phòng khám, mỗi lượt cách nhau 15 phút.
+// Giờ hẹn cách nhau 15 phút trong khung nhận lịch; thời lượng khám thực tế không bị giới hạn 15 phút.
+function populateBookingTimes() {
+  const select = $('time');
+  const dateValue = $('date').value;
+  if (!select) return;
+  select.innerHTML = '';
+  const placeholder = document.createElement('option');
+  placeholder.value = '';
+  placeholder.textContent = dateValue ? '-- Chọn giờ khám --' : '-- Chọn ngày khám trước --';
+  select.appendChild(placeholder);
+  if (!dateValue) return;
+
+  const [year, month, day] = dateValue.split('-').map(Number);
+  const selectedDate = new Date(year, month - 1, day);
+  const dayOfWeek = selectedDate.getDay(); // 0: Chủ nhật, 6: Thứ 7
+  const startMinutes = (dayOfWeek === 0 || dayOfWeek === 6) ? 7 * 60 : 17 * 60;
+  const endMinutes = 20 * 60; // giờ kết thúc; không tạo lượt bắt đầu lúc 20:00
+  const now = new Date();
+  for (let minutes = startMinutes; minutes < endMinutes; minutes += 15) {
+    const hour = String(Math.floor(minutes / 60)).padStart(2, '0');
+    const minute = String(minutes % 60).padStart(2, '0');
+    const value = `${hour}:${minute}`;
+    if (dateValue === todayLocal() && minutes <= now.getHours() * 60 + now.getMinutes()) continue;
+    const option = document.createElement('option');
+    option.value = value;
+    option.textContent = value;
+    select.appendChild(option);
+  }
+  if (select.options.length === 1) {
+    placeholder.textContent = 'Không còn khung giờ phù hợp trong ngày này';
+  }
+}
 function dateLabel(value) {
   if (!value) return '';
   const parts = String(value).split('-');
@@ -334,6 +368,8 @@ $('bookingForm').addEventListener('submit', async e=>{
   if(!item.child||!item.parent||!item.phone||!item.date||!item.time) return message('bookingMessage','Vui lòng điền đủ các mục có dấu *.','error');
   if(item.date < todayLocal()) return message('bookingMessage','Ngày khám không được ở quá khứ.','error');
   if(!/^\d{4}-\d{2}-\d{2}$/.test(item.date) || !/^\d{2}:\d{2}$/.test(item.time)) return message('bookingMessage','Ngày hoặc giờ khám không hợp lệ.','error');
+  const [chosenHour, chosenMinute] = item.time.split(':').map(Number);
+  if (chosenMinute % 15 !== 0) return message('bookingMessage','Giờ khám phải cách nhau theo từng mốc 15 phút. Vui lòng chọn lại.','error');
   setBusy(button,true,'Đang kiểm tra và cấp số...');
   try {
     // Giao dịch nguyên tử: khóa khung giờ + tăng số thứ tự + tạo lịch hẹn cùng lúc.
@@ -353,6 +389,7 @@ $('bookingForm').addEventListener('submit', async e=>{
     });
     $('bookingForm').reset();
     $('date').min=todayLocal();
+    populateBookingTimes();
     message('bookingMessage',`Đặt lịch thành công! Số thứ tự khám: ${queueLabel(assignedNumber)}. Ngày ${dateLabel(item.date)}, lúc ${item.time}. Vui lòng đến đúng giờ.`, 'success');
   } catch(error) {
     if(error && error.message==='SLOT_ALREADY_BOOKED') message('bookingMessage','Khung giờ này đã có người đặt. Vui lòng chọn giờ khác.','error');
@@ -633,6 +670,8 @@ function initFirebase(){
 // Khởi tạo các phần giao diện trước, sau đó kết nối Firebase.
 initSignaturePad();
 $('date').min=todayLocal();
+$('date').addEventListener('change', populateBookingTimes);
+populateBookingTimes();
 $('eDate').value=todayLocal();
 addMedicine();
 initFirebase();
