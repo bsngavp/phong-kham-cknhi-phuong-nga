@@ -280,14 +280,20 @@ async function populateBookingTimes() {
     if (token !== bookingTimeLoadToken || $('date').value !== dateValue) return;
     let remaining = 0;
     snapshots.forEach((snap, index) => {
-      if (snap.exists) return;
+      // Chỉ ẩn khung giờ có khóa hợp lệ gắn với một lịch hẹn.
+      // Tài liệu rỗng/thiếu appointmentId không được coi là giờ đã đặt.
+      const slotData = snap.exists ? (snap.data() || {}) : null;
+      const isBooked = !!(slotData && typeof slotData.appointmentId === 'string' && slotData.appointmentId.trim());
+      if (isBooked) return;
       const option = document.createElement('option');
       option.value = availableTimes[index];
       option.textContent = availableTimes[index];
       select.appendChild(option);
       remaining++;
     });
-    placeholder.textContent = remaining ? '-- Chọn giờ còn trống --' : 'Ngày này đã hết giờ trống';
+    placeholder.textContent = remaining
+      ? `-- Chọn giờ còn trống (${remaining} khung giờ) --`
+      : 'Ngày này đã hết giờ trống';
   } catch (error) {
     console.error('Không tải được giờ đã đặt:', error);
     if (token === bookingTimeLoadToken) placeholder.textContent = 'Không tải được giờ trống. Vui lòng tải lại trang.';
