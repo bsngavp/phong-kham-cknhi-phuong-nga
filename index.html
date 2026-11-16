@@ -314,7 +314,8 @@ function startLiveListeners() {
   }, error => console.error("Lỗi tải lịch sử khám:", error));
 }
 
-$("loginButton").addEventListener("click", async () => {
+$("loginButton").addEventListener("click", async () => { 
+  alert("Đã nhận thao tác đăng nhập");
   const email = $("loginEmail").value.trim();
   const password = $("loginPassword").value;
   if (!email || !password) return message("loginMessage","Vui lòng nhập email và mật khẩu.",true);
@@ -378,7 +379,7 @@ $("bookingForm").addEventListener("submit", async function(e) {
 });
 
   e.preventDefault();
-  if (!auth.currentUser) return message("bookingMessage","Vui lòng đăng nhập trước.",true);
+ 
   const item = {
     child: $("child").value.trim(),
     parent: $("parent").value.trim(),
@@ -391,13 +392,10 @@ $("bookingForm").addEventListener("submit", async function(e) {
   };
   try {
     // Cấp số thứ tự theo ngày dựa trên dữ liệu đang có.
-    const sameDay = appointments.filter(x => x.date === item.date);
-    item.queue = sameDay.reduce((max,x) => Math.max(max, Number(x.queue)||0), 0) + 1;
-    const patientId = await findOrCreatePatient(item);
-    item.patientId = patientId;
+    
     await db.collection("appointments").add(item);
     this.reset();
-    message("bookingMessage","Đã lưu lịch hẹn và liên kết với hồ sơ bệnh nhi.");
+  message("bookingMessage","Đăng ký lịch khám thành công! Phòng khám sẽ liên hệ xác nhận.");
   } catch(error) {
     message("bookingMessage","Không lưu được lịch hẹn: " + error.message,true);
   }
