@@ -784,6 +784,9 @@ function initFirebase(){
     if(!firebase.apps.length)firebase.initializeApp(firebaseConfig);
     auth=firebase.auth();db=firebase.firestore();
     auth.onAuthStateChanged(user=>{
+      // Firebase đã sẵn sàng: tải lại danh sách giờ hẹn để tránh trạng thái
+      // ban đầu chỉ hiện dòng '-- Chọn ngày khám trước --'.
+      if ($('date') && $('date').value) populateBookingTimes();
       $('loginBox').classList.toggle('hidden',!!user);
       $('accountBox').classList.toggle('hidden',!user);
       $('appMain').classList.toggle('hidden',!user);
@@ -796,10 +799,14 @@ function initFirebase(){
 // Khởi tạo các phần giao diện trước, sau đó kết nối Firebase.
 initSignaturePad();
 $('date').min=todayLocal();
+// Một số trình duyệt di động phát input và change khác nhau khi chọn ngày.
+$('date').addEventListener('input', populateBookingTimes);
 $('date').addEventListener('change', populateBookingTimes);
+$('date').addEventListener('blur', populateBookingTimes);
 $('refreshBookingTimes').addEventListener('click', populateBookingTimes);
-// Làm mới thêm khi phụ huynh mở danh sách giờ, tránh hiển thị lựa chọn đã được người khác vừa đặt.
+// Tải lại khi người dùng mở danh sách giờ hoặc chạm vào nút cập nhật.
 $('time').addEventListener('focus', populateBookingTimes);
+$('time').addEventListener('click', populateBookingTimes);
 populateBookingTimes();
 $('eDate').value=todayLocal();
 addMedicine();
