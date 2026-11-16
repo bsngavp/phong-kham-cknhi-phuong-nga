@@ -62,6 +62,7 @@ nav{display:flex;gap:7px;flex-wrap:wrap;margin:12px 0}nav button{flex:1 1 140px;
     <button type="button" data-tab="exam">🩺 Khám bệnh</button>
     <button type="button" data-tab="paymentSection">💳 Thanh toán</button>
     <button type="button" data-tab="historySection">📚 Lịch sử khám</button>
+    <button type="button" data-tab="followUpSection">🔔 Lịch tái khám</button>
   </nav>
 
   <section id="list" class="card">
@@ -111,7 +112,13 @@ nav{display:flex;gap:7px;flex-wrap:wrap;margin:12px 0}nav button{flex:1 1 140px;
     <label for="otherDiagnosis">Chẩn đoán kèm theo</label><textarea id="otherDiagnosis" rows="2"></textarea>
     <h3>💊 Kê đơn thuốc</h3><div id="medicines"></div>
     <button type="button" id="addMedicine" class="secondary no-print">＋ Thêm thuốc</button>
-    <label for="advice">Dặn dò / tái khám</label><textarea id="advice" rows="3"></textarea>
+    <label for="advice">Dặn dò chung</label><textarea id="advice" rows="3"></textarea>
+    <h3>📅 Hẹn tái khám</h3>
+    <div class="grid">
+      <div><label for="followUpDate">Ngày hẹn tái khám</label><input id="followUpDate" type="date"></div>
+      <div><label for="followUpNote">Nội dung cần kiểm tra lại</label><input id="followUpNote" maxlength="500" placeholder="Ví dụ: đánh giá lại triệu chứng, kiểm tra đáp ứng điều trị"></div>
+    </div>
+    <small class="muted">Để trống ngày hẹn nếu bệnh nhi không cần tái khám.</small>
     <h3>✍️ Chữ ký bác sĩ khám</h3>
     <label for="doctorName">Họ tên bác sĩ</label><input id="doctorName" placeholder="Nhập họ tên bác sĩ">
     <p class="muted">Ký trực tiếp bằng ngón tay trên điện thoại hoặc chuột trên máy tính.</p>
@@ -155,6 +162,17 @@ nav{display:flex;gap:7px;flex-wrap:wrap;margin:12px 0}nav button{flex:1 1 140px;
     <h2>📚 Lịch sử khám</h2>
     <label for="historyPatientFilter">Lọc theo bệnh nhi</label><select id="historyPatientFilter"><option value="">-- Tất cả bệnh nhi --</option></select>
     <div id="historyList"></div>
+  </section>
+
+  <section id="followUpSection" class="card hidden">
+    <div class="topline"><h2>🔔 Lịch hẹn tái khám</h2><button type="button" class="light" id="refreshFollowUps">Làm mới</button></div>
+    <p class="muted">Các lịch tái khám được lưu cùng hồ sơ khám trên Firebase và tự đồng bộ giữa điện thoại, máy tính khi đăng nhập.</p>
+    <h3>Đến hạn hôm nay hoặc đã quá hạn</h3>
+    <div id="dueFollowUps"><div class="empty">Chưa có lịch tái khám đến hạn.</div></div>
+    <h3>Những ngày sắp tới</h3>
+    <div id="upcomingFollowUps"><div class="empty">Chưa có lịch tái khám sắp tới.</div></div>
+    <h3>Đã đánh dấu hoàn thành</h3>
+    <div id="completedFollowUps"><div class="empty">Chưa có lịch tái khám hoàn thành.</div></div>
   </section>
   <section class="card"><small>Dữ liệu lịch hẹn, hồ sơ bệnh nhi và hồ sơ khám được lưu trên Firebase Firestore để đồng bộ giữa các thiết bị. Không nhập dữ liệu bệnh nhân thật trước khi đã cấu hình quyền truy cập Firestore an toàn.</small></section>
 </div>
@@ -269,12 +287,13 @@ function setBusy(button, busy, busyText='Đang xử lý...') {
   else { button.textContent = button.dataset.oldText || button.textContent; button.disabled = false; }
 }
 function show(tabId) {
-  ['list','patientsSection','exam','paymentSection','historySection'].forEach(id => $(id).classList.toggle('hidden', id !== tabId));
+  ['list','patientsSection','exam','paymentSection','historySection','followUpSection'].forEach(id => $(id).classList.toggle('hidden', id !== tabId));
   if (tabId === 'list') renderAppointments();
   if (tabId === 'patientsSection') renderPatients();
   if (tabId === 'exam') populateAppointmentSelect();
   if (tabId === 'paymentSection') populatePaymentVisitSelect();
   if (tabId === 'historySection') { populateHistoryFilter(); renderHistory(); }
+  if (tabId === 'followUpSection') renderFollowUps();
   if (tabId === 'exam') setTimeout(resizeSignatureCanvas, 30);
 }
 document.querySelectorAll('nav [data-tab]').forEach(btn => btn.addEventListener('click', () => show(btn.dataset.tab)));
@@ -369,7 +388,7 @@ function startLiveListeners() {
   stopExams=db.collection('examinations').onSnapshot(snapshot=>{
     exams=snapshot.docs.map(doc=>({...doc.data(),firebaseId:doc.id}));
     exams.sort((a,b)=>timestampValue(b.updatedAt||b.createdAt)-timestampValue(a.updatedAt||a.createdAt));
-    renderHistory(); populatePaymentVisitSelect();
+    renderHistory(); renderFollowUps(); populatePaymentVisitSelect();
   },error=>console.error('Lỗi tải lịch sử khám:',error));
   stopPayments=db.collection('payments').onSnapshot(snapshot=>{
     payments=snapshot.docs.map(doc=>({...doc.data(),firebaseId:doc.id}));
@@ -518,7 +537,7 @@ $('patientSelect').addEventListener('change',async()=>{
 });
 
 function clearExamForm() {
-  ['eChild','eDate','eAge','weight','temp','pulse','resp','spo2','symptoms','history','clinical','diagnosis','otherDiagnosis','advice'].forEach(id=>$(id).value='');
+  ['eChild','eDate','eAge','weight','temp','pulse','resp','spo2','symptoms','history','clinical','diagnosis','otherDiagnosis','advice','followUpDate','followUpNote'].forEach(id=>$(id).value='');
   $('medicines').innerHTML='';addMedicine();$('doctorName').value='';
   const canvas=$('signaturePad');canvas.getContext('2d').clearRect(0,0,canvas.width,canvas.height);
   signatureDirty=false;signatureHasInk=false;savedSignatureData='';$('signatureMessage').textContent='Chữ ký sẽ được lưu cùng hồ sơ khám.';
@@ -650,7 +669,31 @@ function renderPayments(){
 function populateHistoryFilter(){const select=$('historyPatientFilter');if(!select)return;const old=select.value;select.innerHTML='';const all=document.createElement('option');all.value='';all.textContent='-- Tất cả bệnh nhi --';select.appendChild(all);patients.forEach(p=>{const o=document.createElement('option');o.value=p.firebaseId;o.textContent=p.child||'Chưa có tên';select.appendChild(o);});if(patients.some(p=>p.firebaseId===old))select.value=old;}
 $('historyPatientFilter').addEventListener('change',renderHistory);
 function renderHistory(){const box=$('historyList');if(!box)return;const filter=$('historyPatientFilter').value;const filtered=exams.filter(x=>!filter||x.patientId===filter);box.innerHTML='';if(!filtered.length){box.innerHTML='<div class="empty">Chưa có hồ sơ khám.</div>';return;}filtered.forEach(x=>{const div=document.createElement('div');div.className='item';const title=document.createElement('strong');title.textContent=x.child||'Chưa có tên';const info=document.createElement('p');info.textContent=`${dateLabel(x.date)} • ${x.diagnosis||'Chưa nhập chẩn đoán'} • Bác sĩ: ${x.doctorName||'—'}`;const btn=document.createElement('button');btn.type='button';btn.textContent='Mở hồ sơ';btn.addEventListener('click',()=>editExam(x));div.append(title,info,btn);box.appendChild(div);});}
-function editExam(x){show('exam');currentExamId=x.firebaseId;currentPatientId=x.patientId||null;currentAppointmentId=x.appointmentId||null;const fields={eChild:'child',eDate:'date',eAge:'age',weight:'weight',temp:'temp',pulse:'pulse',resp:'resp',spo2:'spo2',symptoms:'symptoms',history:'history',clinical:'clinical',diagnosis:'diagnosis',otherDiagnosis:'otherDiagnosis',advice:'advice'};Object.entries(fields).forEach(([id,key])=>$(id).value=x[key]||'');$('patientSelect').value=x.appointmentId?'appointment:'+x.appointmentId:(x.patientId?'patient:'+x.patientId:'');$('medicines').innerHTML='';(x.medicines||[]).forEach(addMedicine);if(!(x.medicines||[]).length)addMedicine();$('doctorName').value=x.doctorName||'';savedSignatureData=x.signatureDataUrl||'';signatureDirty=false;signatureHasInk=!!savedSignatureData;const canvas=$('signaturePad');canvas.getContext('2d').clearRect(0,0,canvas.width,canvas.height);if(savedSignatureData)drawSavedSignature(savedSignatureData);$('signatureMessage').textContent=savedSignatureData?'Đã tải chữ ký đã lưu.':'Hồ sơ này chưa có chữ ký.';message('examMessage','Đang mở hồ sơ đã lưu. Lưu lại sẽ cập nhật lần khám này, không tạo lần mới.');}
+function followUpCard(x, completed=false){
+  const div=document.createElement('div');div.className='item';
+  const title=document.createElement('strong');title.textContent=x.child||'Chưa có tên';
+  const date=document.createElement('p');date.textContent=`Ngày hẹn: ${dateLabel(x.followUpDate)} • Ngày khám gần nhất: ${dateLabel(x.date)}`;
+  const note=document.createElement('p');note.textContent=`Nội dung: ${x.followUpNote||'Kiểm tra lại theo chỉ định'}`;
+  const patient=patients.find(p=>p.firebaseId===x.patientId);if(patient&&patient.phone){const phone=document.createElement('p');phone.textContent=`Điện thoại liên hệ: ${patient.phone}`;div.append(title,date,note,phone);}else div.append(title,date,note);
+  const actions=document.createElement('div');actions.className='actions';
+  const openBtn=document.createElement('button');openBtn.type='button';openBtn.className='light';openBtn.textContent='Mở hồ sơ khám';openBtn.addEventListener('click',()=>editExam(x));actions.appendChild(openBtn);
+  if(!completed){const doneBtn=document.createElement('button');doneBtn.type='button';doneBtn.textContent='✓ Đánh dấu đã tái khám';doneBtn.addEventListener('click',async()=>{if(!db||!auth.currentUser)return;doneBtn.disabled=true;try{await db.collection('examinations').doc(x.firebaseId).update({followUpStatus:'done',followUpCompletedAt:firebase.firestore.FieldValue.serverTimestamp(),updatedAt:firebase.firestore.FieldValue.serverTimestamp()});}catch(error){alert('Không cập nhật được trạng thái tái khám: '+error.message);doneBtn.disabled=false;}});actions.appendChild(doneBtn);}
+  div.appendChild(actions);return div;
+}
+function renderFollowUps(){
+  const due=$('dueFollowUps'),upcoming=$('upcomingFollowUps'),completed=$('completedFollowUps');if(!due||!upcoming||!completed)return;
+  due.innerHTML='';upcoming.innerHTML='';completed.innerHTML='';
+  const active=exams.filter(x=>x.followUpDate&&x.followUpStatus!=='done').sort((a,b)=>safeText(a.followUpDate).localeCompare(safeText(b.followUpDate)));
+  const done=exams.filter(x=>x.followUpDate&&x.followUpStatus==='done').sort((a,b)=>safeText(b.followUpDate).localeCompare(safeText(a.followUpDate)));
+  const today=todayLocal();let dueCount=0,upcomingCount=0;
+  active.forEach(x=>{const target=x.followUpDate<today?due:x.followUpDate===today?due:upcoming;if(target===due)dueCount++;else upcomingCount++;target.appendChild(followUpCard(x,false));});
+  done.slice(0,30).forEach(x=>completed.appendChild(followUpCard(x,true)));
+  if(!dueCount)due.innerHTML='<div class="empty">Không có lịch tái khám quá hạn hoặc đến hạn hôm nay.</div>';
+  if(!upcomingCount)upcoming.innerHTML='<div class="empty">Chưa có lịch tái khám sắp tới.</div>';
+  if(!done.length)completed.innerHTML='<div class="empty">Chưa có lịch tái khám hoàn thành.</div>';
+}
+$('refreshFollowUps').addEventListener('click',renderFollowUps);
+function editExam(x){show('exam');currentExamId=x.firebaseId;currentPatientId=x.patientId||null;currentAppointmentId=x.appointmentId||null;const fields={eChild:'child',eDate:'date',eAge:'age',weight:'weight',temp:'temp',pulse:'pulse',resp:'resp',spo2:'spo2',symptoms:'symptoms',history:'history',clinical:'clinical',diagnosis:'diagnosis',otherDiagnosis:'otherDiagnosis',advice:'advice',followUpDate:'followUpDate',followUpNote:'followUpNote'};Object.entries(fields).forEach(([id,key])=>$(id).value=x[key]||'');$('patientSelect').value=x.appointmentId?'appointment:'+x.appointmentId:(x.patientId?'patient:'+x.patientId:'');$('medicines').innerHTML='';(x.medicines||[]).forEach(addMedicine);if(!(x.medicines||[]).length)addMedicine();$('doctorName').value=x.doctorName||'';savedSignatureData=x.signatureDataUrl||'';signatureDirty=false;signatureHasInk=!!savedSignatureData;const canvas=$('signaturePad');canvas.getContext('2d').clearRect(0,0,canvas.width,canvas.height);if(savedSignatureData)drawSavedSignature(savedSignatureData);$('signatureMessage').textContent=savedSignatureData?'Đã tải chữ ký đã lưu.':'Hồ sơ này chưa có chữ ký.';message('examMessage','Đang mở hồ sơ đã lưu. Lưu lại sẽ cập nhật lần khám này, không tạo lần mới.');}
 
 $('saveExam').addEventListener('click',async()=>{
   if(!auth.currentUser)return message('examMessage','Vui lòng đăng nhập.','error');
@@ -660,7 +703,10 @@ $('saveExam').addEventListener('click',async()=>{
     let patientId=currentPatientId;
     if(!patientId){patientId=await findOrCreatePatient({child:childName,parent:'',phone:''});currentPatientId=patientId;}
     const linkedAppointment=appointments.find(a=>a.firebaseId===currentAppointmentId);
-    const record={patientId,appointmentId:currentAppointmentId||null,queueNumber:linkedAppointment?linkedAppointment.queueNumber:null,child:childName,date:$('eDate').value,age:$('eAge').value,weight:$('weight').value,temp:$('temp').value,pulse:$('pulse').value,resp:$('resp').value,spo2:$('spo2').value,symptoms:$('symptoms').value,history:$('history').value,clinical:$('clinical').value,diagnosis:$('diagnosis').value,otherDiagnosis:$('otherDiagnosis').value,medicines:getMedicines(),advice:$('advice').value,doctorName:$('doctorName').value.trim(),signatureDataUrl:signatureForSave(),updatedAt:firebase.firestore.FieldValue.serverTimestamp()};
+    const previousExam=currentExamId?exams.find(x=>x.firebaseId===currentExamId):null;
+    const followUpDate=$('followUpDate').value;
+    const followUpStatus=followUpDate?(previousExam&&previousExam.followUpDate===followUpDate?previousExam.followUpStatus||'pending':'pending'):'none';
+    const record={patientId,appointmentId:currentAppointmentId||null,queueNumber:linkedAppointment?linkedAppointment.queueNumber:null,child:childName,date:$('eDate').value,age:$('eAge').value,weight:$('weight').value,temp:$('temp').value,pulse:$('pulse').value,resp:$('resp').value,spo2:$('spo2').value,symptoms:$('symptoms').value,history:$('history').value,clinical:$('clinical').value,diagnosis:$('diagnosis').value,otherDiagnosis:$('otherDiagnosis').value,medicines:getMedicines(),advice:$('advice').value,followUpDate,followUpNote:$('followUpNote').value.trim(),followUpStatus,doctorName:$('doctorName').value.trim(),signatureDataUrl:signatureForSave(),updatedAt:firebase.firestore.FieldValue.serverTimestamp()};
     if(currentExamId){await db.collection('examinations').doc(currentExamId).set(record,{merge:true});message('examMessage','Đã cập nhật hồ sơ khám.');}
     else{record.createdAt=firebase.firestore.FieldValue.serverTimestamp();const ref=await db.collection('examinations').add(record);currentExamId=ref.id;if(currentAppointmentId)await db.collection('appointments').doc(currentAppointmentId).update({status:'Đã khám',patientId,updatedAt:firebase.firestore.FieldValue.serverTimestamp()});message('examMessage','Đã lưu lần khám mới vào lịch sử bệnh nhi.');}
     savedSignatureData=record.signatureDataUrl||'';signatureDirty=false;
@@ -674,7 +720,7 @@ function printExam(){
   const w=window.open('','_blank');if(!w)return alert('Trình duyệt đang chặn cửa sổ in. Hãy cho phép cửa sổ bật lên.');
   const medicines=getMedicines();const meds=medicines.length?medicines.map((m,i)=>`<tr><td>${i+1}</td><td>${escapeHtml(m.name)}</td><td>${escapeHtml(m.strength)}</td><td>${escapeHtml(m.dose)}</td><td>${escapeHtml(m.route)}</td><td>${escapeHtml(m.freq)}</td><td>${escapeHtml(m.days)}</td><td>${escapeHtml(m.note)}</td></tr>`).join(''):'<tr><td colspan="8">Không có thuốc được kê.</td></tr>';
   const linkedForPrint=appointments.find(a=>a.firebaseId===currentAppointmentId);
-  const fields=[['Số thứ tự khám',linkedForPrint?queueLabel(linkedForPrint.queueNumber):'—'],['Họ tên trẻ',$('eChild').value],['Ngày khám',dateLabel($('eDate').value)],['Tuổi',$('eAge').value],['Cân nặng',$('weight').value+' kg'],['Nhiệt độ',$('temp').value+' °C'],['Mạch',$('pulse').value],['Nhịp thở',$('resp').value],['SpO₂',$('spo2').value],['Lý do khám / triệu chứng',$('symptoms').value],['Tiền sử',$('history').value],['Khám lâm sàng',$('clinical').value],['Chẩn đoán chính',$('diagnosis').value],['Chẩn đoán kèm theo',$('otherDiagnosis').value],['Dặn dò / tái khám',$('advice').value]];
+  const fields=[['Số thứ tự khám',linkedForPrint?queueLabel(linkedForPrint.queueNumber):'—'],['Họ tên trẻ',$('eChild').value],['Ngày khám',dateLabel($('eDate').value)],['Tuổi',$('eAge').value],['Cân nặng',$('weight').value+' kg'],['Nhiệt độ',$('temp').value+' °C'],['Mạch',$('pulse').value],['Nhịp thở',$('resp').value],['SpO₂',$('spo2').value],['Lý do khám / triệu chứng',$('symptoms').value],['Tiền sử',$('history').value],['Khám lâm sàng',$('clinical').value],['Chẩn đoán chính',$('diagnosis').value],['Chẩn đoán kèm theo',$('otherDiagnosis').value],['Dặn dò chung',$('advice').value],['Ngày hẹn tái khám',dateLabel($('followUpDate').value)],['Nội dung tái khám',$('followUpNote').value]];
   const rows=fields.map(([k,v])=>`<p><b>${escapeHtml(k)}:</b> ${escapeHtml(v||'—').replace(/\n/g,'<br>')}</p>`).join('');
   const signature=signatureForSave();
   w.document.write(`<!doctype html><html lang="vi"><head><meta charset="utf-8"><title>Phiếu khám - Phòng khám Nhi Phương Nga</title><style>body{font-family:Arial,sans-serif;color:#222;margin:28px}h1,h2{text-align:center}h1{font-size:20px;color:#16845b}h2{font-size:18px}p{margin:8px 0;white-space:normal}.table{width:100%;border-collapse:collapse;font-size:12px}.table th,.table td{border:1px solid #777;padding:6px;text-align:left}.sign{text-align:right;margin:36px 25px 0}.sign img{width:180px;height:75px;object-fit:contain;display:block;margin-left:auto}@media print{body{margin:12mm}}</style></head><body><h1>PHÒNG KHÁM NHI PHƯƠNG NGA</h1><h2>PHIẾU KHÁM VÀ ĐƠN THUỐC</h2>${rows}<h3>ĐƠN THUỐC</h3><table class="table"><thead><tr><th>STT</th><th>Tên thuốc</th><th>Hàm lượng</th><th>Liều/lần</th><th>Đường dùng</th><th>Lần/ngày</th><th>Số ngày</th><th>Hướng dẫn</th></tr></thead><tbody>${meds}</tbody></table><div class="sign"><p>Bác sĩ khám</p>${signature?`<img src="${signature}" alt="Chữ ký bác sĩ">`:''}<b>${escapeHtml($('doctorName').value)}</b></div><script>window.onload=()=>window.print();<\/script></body></html>`);
