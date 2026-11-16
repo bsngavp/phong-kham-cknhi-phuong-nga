@@ -36,6 +36,19 @@ label{display:block;margin-top:7px;font-weight:600;font-size:14px}
 <h1>🌿 Phòng khám Nhi Phương Nga</h1>
 <p>Đặt lịch • Hồ sơ bệnh nhi • Khám bệnh • Lịch sử khám</p>
 </header>
+<section id="booking" class="card">
+<h2>📅 Đặt lịch khám</h2>
+<form id="bookingForm">
+<label>Họ tên trẻ</label><input id="child" required>
+<label>Người đưa trẻ đến khám</label><input id="parent" required>
+<label>Số điện thoại</label><input id="phone" type="tel" required>
+<label>Ngày khám</label><input id="date" type="date" required>
+<label>Giờ khám</label><input id="time" type="time" required>
+<label>Lý do khám</label><textarea id="reason" rows="2"></textarea>
+<button type="submit">Đăng ký lịch khám</button>
+</form>
+<p id="bookingMessage" role="status"></p>
+</section>
 
 <div id="loginBox" class="card" style="max-width:450px;margin:20px auto">
 <h2>Đăng nhập phòng khám</h2>
@@ -59,19 +72,6 @@ label{display:block;margin-top:7px;font-weight:600;font-size:14px}
 <button data-tab="historySection">Lịch sử khám</button>
 </nav>
 
-<section id="booking" class="card">
-<h2>📅 Đặt lịch khám</h2>
-<form id="bookingForm">
-<label>Họ tên trẻ</label><input id="child" required>
-<label>Người đưa trẻ đến khám</label><input id="parent" required>
-<label>Số điện thoại</label><input id="phone" type="tel" required>
-<label>Ngày khám</label><input id="date" type="date" required>
-<label>Giờ khám</label><input id="time" type="time" required>
-<label>Lý do khám</label><textarea id="reason" rows="2"></textarea>
-<button type="submit">Đăng ký lịch khám</button>
-</form>
-<p id="bookingMessage" role="status"></p>
-</section>
 
 <section id="list" class="card hidden">
 <h2>📋 Lịch hẹn</h2>
@@ -340,6 +340,40 @@ auth.onAuthStateChanged(user => {
 });
 
 $("bookingForm").addEventListener("submit", async function(e) {
+  e.preventDefault();
+
+  const item = {
+    child: $("child").value.trim(),
+    parent: $("parent").value.trim(),
+    phone: normalizePhone($("phone").value),
+    date: $("date").value,
+    time: $("time").value,
+    reason: $("reason").value.trim(),
+    status: "Chờ khám",
+    createdAt: firebase.firestore.FieldValue.serverTimestamp()
+  };
+
+  if (!item.child || !item.parent || !item.phone ||
+      !item.date || !item.time) {
+    return message("bookingMessage",
+      "Vui lòng nhập đầy đủ thông tin.", true);
+  }
+
+  try {
+    await db.collection("appointments").add(item);
+
+    this.reset();
+
+    message("bookingMessage",
+      "Đăng ký thành công! Phòng khám đã nhận được lịch hẹn.");
+
+  } catch(error) {
+    console.error(error);
+    message("bookingMessage",
+      "Không lưu được lịch hẹn: " + error.message, true);
+  }
+});
+
   e.preventDefault();
   if (!auth.currentUser) return message("bookingMessage","Vui lòng đăng nhập trước.",true);
   const item = {
