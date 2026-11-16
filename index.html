@@ -802,7 +802,7 @@ $('date').min=todayLocal();
 // Một số trình duyệt di động phát input và change khác nhau khi chọn ngày.
 $('date').addEventListener('input', populateBookingTimes);
 $('date').addEventListener('change', populateBookingTimes);
-$('date').addEventListener('blur', populateBookingTimes);
+// Không tải lại khi ô ngày mất focus: nếu không, chạm vào ô giờ sẽ làm mất danh sách.
 $('refreshBookingTimes').addEventListener('click', populateBookingTimes);
 // Không tải lại khi chạm vào ô giờ: việc đó sẽ xóa danh sách và vô hiệu hóa
 // select ngay lúc trình duyệt đang mở danh sách. Chỉ tải khi đổi ngày hoặc
