@@ -32,7 +32,7 @@ nav{display:flex;gap:7px;flex-wrap:wrap;margin:12px 0}nav button{flex:1 1 140px;
       <div><label for="parent">Họ tên người đưa trẻ đến khám *</label><input id="parent" required maxlength="100"></div>
       <div><label for="phone">Số điện thoại *</label><input id="phone" type="tel" required maxlength="20" autocomplete="tel"></div>
       <div><label for="date">Ngày khám *</label><input id="date" type="date" required></div>
-      <div><label for="time">Giờ hẹn khám * (các lượt cách nhau 15 phút)</label><select id="time" required><option value="">-- Chọn ngày khám trước --</option></select><small class="muted">15 phút là khoảng cách giữa hai giờ hẹn, không phải thời lượng khám. Bác sĩ tiếp tục khám bệnh nhân cuối cùng cho đến khi hoàn tất, không bắt buộc kết thúc lúc 19:45 hoặc 20:00.</small></div>
+      <div><label for="time">Giờ hẹn khám * (các lượt cách nhau 15 phút)</label><select id="time" required><option value="">-- Chọn ngày khám trước --</option></select><button id="refreshBookingTimes" type="button" class="light">↻ Cập nhật giờ còn trống</button><small class="muted">Giờ đã có người đặt sẽ tự ẩn. Nếu lịch vừa được hủy, bấm “Cập nhật giờ còn trống” để tải lại. 15 phút là khoảng cách giữa hai giờ hẹn, không phải thời lượng khám. Giờ cuối là 20:45.</small></div>
     </div>
     <label for="reason">Lý do khám</label><textarea id="reason" rows="2" maxlength="1000"></textarea>
     <button id="bookingSubmit" type="submit">Đăng ký lịch khám</button>
@@ -241,39 +241,58 @@ function isValidBookingDateTime(dateValue, timeValue) {
 
 // Tạo giờ hẹn theo lịch làm việc của phòng khám, mỗi lượt cách nhau 15 phút.
 // Giờ hẹn cách nhau 15 phút trong khung nhận lịch; thời lượng khám thực tế không bị giới hạn 15 phút.
-function populateBookingTimes() {
+let bookingTimeLoadToken = 0;
+async function populateBookingTimes() {
   const select = $('time');
   const dateValue = $('date').value;
   if (!select) return;
+  const token = ++bookingTimeLoadToken;
   select.innerHTML = '';
+  select.disabled = true;
   const placeholder = document.createElement('option');
   placeholder.value = '';
-  placeholder.textContent = dateValue ? '-- Chọn giờ khám --' : '-- Chọn ngày khám trước --';
+  placeholder.textContent = dateValue ? 'Đang tải giờ còn trống...' : '-- Chọn ngày khám trước --';
   select.appendChild(placeholder);
-  if (!dateValue) return;
+  if (!dateValue) { select.disabled = false; return; }
 
   const [year, month, day] = dateValue.split('-').map(Number);
   const selectedDate = new Date(year, month - 1, day);
   if (selectedDate.getFullYear() !== year || selectedDate.getMonth() !== month - 1 || selectedDate.getDate() !== day) {
-    placeholder.textContent = 'Ngày khám không hợp lệ';
-    return;
+    placeholder.textContent = 'Ngày khám không hợp lệ'; select.disabled = false; return;
   }
-  const dayOfWeek = selectedDate.getDay(); // 0: Chủ nhật, 6: Thứ 7
+  const dayOfWeek = selectedDate.getDay();
   const startMinutes = (dayOfWeek === 0 || dayOfWeek === 6) ? 7 * 60 : 17 * 60;
-  const endMinutes = 21 * 60; // mốc kết thúc loại trừ; lượt cuối là 20:45
+  const endMinutes = 21 * 60;
   const now = new Date();
+  const availableTimes = [];
   for (let minutes = startMinutes; minutes < endMinutes; minutes += 15) {
     const hour = String(Math.floor(minutes / 60)).padStart(2, '0');
     const minute = String(minutes % 60).padStart(2, '0');
-    const value = `${hour}:${minute}`;
     if (dateValue === todayLocal() && minutes <= now.getHours() * 60 + now.getMinutes()) continue;
-    const option = document.createElement('option');
-    option.value = value;
-    option.textContent = value;
-    select.appendChild(option);
+    availableTimes.push(`${hour}:${minute}`);
   }
-  if (select.options.length === 1) {
-    placeholder.textContent = 'Không còn khung giờ phù hợp trong ngày này';
+  try {
+    if (!db) throw new Error('Firebase chưa sẵn sàng');
+    // Đọc trạng thái từng khóa giờ công khai; chỉ hiển thị những giờ chưa có khóa.
+    const snapshots = await Promise.all(availableTimes.map(time =>
+      db.collection('appointmentSlots').doc(slotDocumentId(dateValue, time)).get()
+    ));
+    if (token !== bookingTimeLoadToken || $('date').value !== dateValue) return;
+    let remaining = 0;
+    snapshots.forEach((snap, index) => {
+      if (snap.exists) return;
+      const option = document.createElement('option');
+      option.value = availableTimes[index];
+      option.textContent = availableTimes[index];
+      select.appendChild(option);
+      remaining++;
+    });
+    placeholder.textContent = remaining ? '-- Chọn giờ còn trống --' : 'Ngày này đã hết giờ trống';
+  } catch (error) {
+    console.error('Không tải được giờ đã đặt:', error);
+    if (token === bookingTimeLoadToken) placeholder.textContent = 'Không tải được giờ trống. Vui lòng tải lại trang.';
+  } finally {
+    if (token === bookingTimeLoadToken) select.disabled = false;
   }
 }
 function dateLabel(value) {
@@ -411,6 +430,7 @@ $('bookingForm').addEventListener('submit', async e=>{
   const button=$('bookingSubmit');
   if(!db || !window.firebase) return message('bookingMessage','Firebase chưa sẵn sàng. Hãy tải lại trang và thử lại.','error');
   const item={child:$('child').value.trim(),parent:$('parent').value.trim(),phone:normalizePhone($('phone').value),date:$('date').value,time:$('time').value,reason:$('reason').value.trim(),status:'Chờ xác nhận'};
+  // ID khung giờ được lưu kèm lịch hẹn để Firestore Rules kiểm tra giao dịch 3 tài liệu.
   if(!item.child||!item.parent||!item.phone||!item.date||!item.time) return message('bookingMessage','Vui lòng điền đủ các mục có dấu *.','error');
   if (!isValidBookingDateTime(item.date, item.time)) {
     return message('bookingMessage','Ngày hoặc giờ khám không hợp lệ. Ngày thường nhận lịch 17:00–20:45; thứ Bảy và Chủ nhật nhận lịch 07:00–20:45, mỗi mốc cách nhau 15 phút và không nhận giờ đã qua.','error');
@@ -420,7 +440,9 @@ $('bookingForm').addEventListener('submit', async e=>{
     // Giao dịch nguyên tử: khóa khung giờ + tăng số thứ tự + tạo lịch hẹn cùng lúc.
     // Hai người đặt đồng thời một giờ thì chỉ một giao dịch được phép thành công.
     const appointmentRef=db.collection('appointments').doc();
-    const slotRef=db.collection('appointmentSlots').doc(slotDocumentId(item.date,item.time));
+    const slotId=slotDocumentId(item.date,item.time);
+    item.slotId=slotId;
+    const slotRef=db.collection('appointmentSlots').doc(slotId);
     const counterRef=db.collection('dailyCounters').doc(item.date);
     let assignedNumber=0;
     await db.runTransaction(async transaction=>{
@@ -432,7 +454,7 @@ $('bookingForm').addEventListener('submit', async e=>{
       if(slotSnap.exists) throw new Error('SLOT_ALREADY_BOOKED');
       const counterSnap=await transaction.get(counterRef);
       assignedNumber=counterSnap.exists ? (Number(counterSnap.data().nextNumber)||0)+1 : 1;
-      transaction.set(counterRef,{date:item.date,nextNumber:assignedNumber,updatedAt:firebase.firestore.FieldValue.serverTimestamp()});
+      transaction.set(counterRef,{date:item.date,nextNumber:assignedNumber,lastAppointmentId:appointmentRef.id,lastSlotId:slotId,lastTime:item.time,updatedAt:firebase.firestore.FieldValue.serverTimestamp()});
       transaction.set(slotRef,{date:item.date,time:item.time,appointmentId:appointmentRef.id,queueNumber:assignedNumber,createdAt:firebase.firestore.FieldValue.serverTimestamp()});
       transaction.set(appointmentRef,{...item,queueNumber:assignedNumber,createdAt:firebase.firestore.FieldValue.serverTimestamp()});
     });
@@ -476,6 +498,26 @@ function friendlyAuthError(error) {
 }
 $('logoutButton').addEventListener('click',async()=>{try{await auth.signOut();}catch(error){alert('Không đăng xuất được: '+error.message);}});
 
+async function cancelAppointmentForClinic(appointment) {
+  if (!appointment || !appointment.firebaseId) throw new Error('Thiếu thông tin lịch hẹn.');
+  if (appointment.status === 'Đã khám') throw new Error('Lịch đã khám, không thể hủy.');
+  if (appointment.status === 'Hủy') return;
+  const appointmentRef=db.collection('appointments').doc(appointment.firebaseId);
+  const slotRef=db.collection('appointmentSlots').doc(appointment.slotId || slotDocumentId(appointment.date,appointment.time));
+  await db.runTransaction(async tx=>{
+    const appointmentSnap=await tx.get(appointmentRef);
+    const slotSnap=await tx.get(slotRef);
+    if(!appointmentSnap.exists) throw new Error('Không tìm thấy lịch hẹn.');
+    if(appointmentSnap.data().status==='Đã khám') throw new Error('Lịch đã khám, không thể hủy.');
+    if(appointmentSnap.data().status==='Hủy') return;
+    tx.update(appointmentRef,{status:'Hủy',updatedAt:firebase.firestore.FieldValue.serverTimestamp()});
+    // Chỉ giải phóng khóa giờ nếu khóa đó vẫn thuộc đúng lịch đang hủy.
+    if(slotSnap.exists && slotSnap.data().appointmentId===appointment.firebaseId) tx.delete(slotRef);
+  });
+  // Nếu đang xem đúng ngày vừa hủy, tải lại ngay danh sách giờ còn trống.
+  if ($('date') && $('date').value === appointment.date) await populateBookingTimes();
+}
+
 function renderAppointments() {
   const box=$('appointments'); if(!box)return;
   const q=$('appointmentSearch').value.trim().toLocaleLowerCase('vi');
@@ -489,7 +531,9 @@ function renderAppointments() {
     const info=document.createElement('p');info.textContent=`Người liên hệ: ${x.parent||'—'} • Điện thoại: ${x.phone||'—'}`;
     const reason=document.createElement('p');reason.textContent='Lý do khám: '+(x.reason||'Chưa nhập');
     const status=document.createElement('select');['Chờ xác nhận','Chờ khám','Đang khám','Đã khám','Hủy'].forEach(s=>{const o=document.createElement('option');o.value=s;o.textContent=s;status.appendChild(o);});status.value=x.status||'Chờ xác nhận';
-    status.addEventListener('change',async()=>{const nextStatus=status.value;try{const appointmentRef=db.collection('appointments').doc(x.firebaseId);if(nextStatus==='Hủy'){const slotRef=db.collection('appointmentSlots').doc(slotDocumentId(x.date,x.time));await db.runTransaction(async tx=>{const appointmentSnap=await tx.get(appointmentRef);const slotSnap=await tx.get(slotRef);if(!appointmentSnap.exists)throw new Error('Không tìm thấy lịch hẹn.');tx.update(appointmentRef,{status:nextStatus,updatedAt:firebase.firestore.FieldValue.serverTimestamp()});if(slotSnap.exists&&slotSnap.data().appointmentId===x.firebaseId)tx.delete(slotRef);});}else{await appointmentRef.update({status:nextStatus,updatedAt:firebase.firestore.FieldValue.serverTimestamp()});}}catch(error){alert('Không cập nhật được trạng thái: '+error.message);status.value=x.status||'Chờ xác nhận';}});
+    status.addEventListener('change',async()=>{const nextStatus=status.value;try{const appointmentRef=db.collection('appointments').doc(x.firebaseId);if(nextStatus==='Hủy'){const confirmed=window.confirm(`Xác nhận hủy lịch của bé ${x.child||''} ngày ${dateLabel(x.date)} lúc ${x.time||''}? Khung giờ sẽ được mở lại cho người khác.`);if(!confirmed){status.value=x.status||'Chờ xác nhận';return;}await cancelAppointmentForClinic(x);}else{await appointmentRef.update({status:nextStatus,updatedAt:firebase.firestore.FieldValue.serverTimestamp()});}}catch(error){alert('Không cập nhật được trạng thái: '+error.message);status.value=x.status||'Chờ xác nhận';}});
+    const cancelBtn=document.createElement('button');cancelBtn.type='button';cancelBtn.className='secondary';cancelBtn.textContent=x.status==='Hủy'?'Đã hủy lịch':'Hủy lịch hẹn';cancelBtn.disabled=x.status==='Hủy'||x.status==='Đã khám';cancelBtn.title=cancelBtn.disabled?(x.status==='Hủy'?'Lịch này đã được hủy':'Lịch đã khám, không thể hủy'):'Hủy lịch và giải phóng khung giờ';
+    cancelBtn.addEventListener('click',async()=>{try{await cancelAppointmentForClinic(x);alert('Đã hủy lịch hẹn và giải phóng khung giờ.');}catch(error){alert('Không hủy được lịch hẹn: '+error.message);}});
     const btn=document.createElement('button');btn.type='button';btn.textContent='Mở phiếu khám';
     btn.addEventListener('click',async()=>{
       currentAppointmentId=x.firebaseId;currentExamId=null;clearExamForm();show('exam');
@@ -503,7 +547,7 @@ function renderAppointments() {
     const pay=payments.find(p=>p.visitType==='appointment'&&p.visitId===x.firebaseId);
     const payBadge=document.createElement('span');payBadge.className='status';payBadge.textContent=pay?`Thanh toán: ${pay.status||'Đã ghi nhận'}`:'Chưa ghi nhận thanh toán';
     const payBtn=document.createElement('button');payBtn.type='button';payBtn.className='light';payBtn.textContent='Ghi nhận thanh toán';payBtn.addEventListener('click',()=>{show('paymentSection');$('paymentVisit').value='appointment:'+x.firebaseId;loadPaymentForSelection($('paymentVisit').value);});
-    div.append(title,queue,badge,payBadge,info,reason,status,btn,payBtn);box.appendChild(div);
+    div.append(title,queue,badge,payBadge,info,reason,status,cancelBtn,btn,payBtn);box.appendChild(div);
   });
 }
 $('appointmentSearch').addEventListener('input',renderAppointments);
@@ -747,6 +791,9 @@ function initFirebase(){
 initSignaturePad();
 $('date').min=todayLocal();
 $('date').addEventListener('change', populateBookingTimes);
+$('refreshBookingTimes').addEventListener('click', populateBookingTimes);
+// Làm mới thêm khi phụ huynh mở danh sách giờ, tránh hiển thị lựa chọn đã được người khác vừa đặt.
+$('time').addEventListener('focus', populateBookingTimes);
 populateBookingTimes();
 $('eDate').value=todayLocal();
 addMedicine();
