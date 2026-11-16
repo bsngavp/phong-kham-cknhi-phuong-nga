@@ -804,9 +804,9 @@ $('date').addEventListener('input', populateBookingTimes);
 $('date').addEventListener('change', populateBookingTimes);
 $('date').addEventListener('blur', populateBookingTimes);
 $('refreshBookingTimes').addEventListener('click', populateBookingTimes);
-// Tải lại khi người dùng mở danh sách giờ hoặc chạm vào nút cập nhật.
-$('time').addEventListener('focus', populateBookingTimes);
-$('time').addEventListener('click', populateBookingTimes);
+// Không tải lại khi chạm vào ô giờ: việc đó sẽ xóa danh sách và vô hiệu hóa
+// select ngay lúc trình duyệt đang mở danh sách. Chỉ tải khi đổi ngày hoặc
+// khi người dùng chủ động bấm nút "Cập nhật giờ còn trống".
 populateBookingTimes();
 $('eDate').value=todayLocal();
 addMedicine();
