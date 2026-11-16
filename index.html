@@ -215,7 +215,7 @@ function populateBookingTimes() {
   const selectedDate = new Date(year, month - 1, day);
   const dayOfWeek = selectedDate.getDay(); // 0: Chủ nhật, 6: Thứ 7
   const startMinutes = (dayOfWeek === 0 || dayOfWeek === 6) ? 7 * 60 : 17 * 60;
-  const endMinutes = 20 * 60; // giờ kết thúc; không tạo lượt bắt đầu lúc 20:00
+  const endMinutes = 21 * 60; // nhận lượt cuối lúc 20:45; không tạo lượt bắt đầu lúc 21:00
   const now = new Date();
   for (let minutes = startMinutes; minutes < endMinutes; minutes += 15) {
     const hour = String(Math.floor(minutes / 60)).padStart(2, '0');
@@ -379,6 +379,18 @@ $('bookingForm').addEventListener('submit', async e=>{
     const counterRef=db.collection('dailyCounters').doc(item.date);
     let assignedNumber=0;
     await db.runTransaction(async transaction=>{
+      // Đọc toàn bộ khung giờ đã giữ trong ngày để kiểm tra khoảng cách tối thiểu 15 phút.
+      // Truy vấn nằm trong transaction để Firestore tự chạy lại nếu có người đặt đồng thời.
+      const daySlotsQuery=db.collection('appointmentSlots').where('date','==',item.date);
+      const daySlotsSnap=await transaction.get(daySlotsQuery);
+      const requestedMinutes=Number(item.time.slice(0,2))*60+Number(item.time.slice(3,5));
+      const tooClose=daySlotsSnap.docs.some(doc=>{
+        const bookedTime=String(doc.data().time||'');
+        if(!/^\\d{2}:\\d{2}$/.test(bookedTime)) return false;
+        const bookedMinutes=Number(bookedTime.slice(0,2))*60+Number(bookedTime.slice(3,5));
+        return Math.abs(bookedMinutes-requestedMinutes)<15;
+      });
+      if(tooClose) throw new Error('SLOT_TOO_CLOSE');
       const slotSnap=await transaction.get(slotRef);
       if(slotSnap.exists) throw new Error('SLOT_ALREADY_BOOKED');
       const counterSnap=await transaction.get(counterRef);
@@ -392,7 +404,8 @@ $('bookingForm').addEventListener('submit', async e=>{
     populateBookingTimes();
     message('bookingMessage',`Đặt lịch thành công! Số thứ tự khám: ${queueLabel(assignedNumber)}. Ngày ${dateLabel(item.date)}, lúc ${item.time}. Vui lòng đến đúng giờ.`, 'success');
   } catch(error) {
-    if(error && error.message==='SLOT_ALREADY_BOOKED') message('bookingMessage','Khung giờ này đã có người đặt. Vui lòng chọn giờ khác.','error');
+    if(error && error.message==='SLOT_TOO_CLOSE') message('bookingMessage','Giờ này quá gần một lịch đã đặt. Hai lịch phải cách nhau ít nhất 15 phút. Vui lòng chọn giờ khác.','error');
+    else if(error && error.message==='SLOT_ALREADY_BOOKED') message('bookingMessage','Khung giờ này đã có người đặt. Vui lòng chọn giờ khác.','error');
     else {
       console.error('Lỗi giao dịch đặt lịch Firestore:', {code:error.code||'',message:error.message||'',error});
       message('bookingMessage','Không gửi được lịch hẹn: '+(error.code?error.code+' - ':'')+(error.message||'Lỗi kết nối Firebase.')+' Hãy kiểm tra Firestore Rules và Console.','error');
