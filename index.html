@@ -435,7 +435,7 @@ function startLiveListeners() {
   stopExams=db.collection('examinations').onSnapshot(snapshot=>{
     exams=snapshot.docs.map(doc=>({...doc.data(),firebaseId:doc.id}));
     exams.sort((a,b)=>timestampValue(b.updatedAt||b.createdAt)-timestampValue(a.updatedAt||a.createdAt));
-    renderHistory(); renderFollowUps(); populatePaymentVisitSelect();
+    renderHistory(); renderFollowUps(); renderAppointments(); populatePaymentVisitSelect();
   },error=>console.error('Lỗi tải lịch sử khám:',error));
   stopPayments=db.collection('payments').onSnapshot(snapshot=>{
     payments=snapshot.docs.map(doc=>({...doc.data(),firebaseId:doc.id}));
@@ -550,62 +550,50 @@ function renderAppointments() {
   const box=$('appointments'); if(!box)return;
   const q=$('appointmentSearch').value.trim().toLocaleLowerCase('vi');
   const filtered=appointments.filter(x=>
-    safeText(x.child).toLocaleLowerCase('vi').includes(q) ||
-    safeText(x.phone).includes(q)
+    safeText(x.child).toLocaleLowerCase('vi').includes(q) || safeText(x.phone).includes(q)
   );
-
   box.innerHTML='';
-  const normalizeStatus=x=>String(x.status||'Chờ xác nhận').trim().toLocaleLowerCase('vi');
-  // Một lịch được xem là đã khám nếu trạng thái đã khám hoặc đã có phiếu khám liên kết.
+  if(!filtered.length){box.innerHTML='<div class="empty">Chưa có lịch hẹn phù hợp.</div>';return;}
+
+  const statusKey=x=>String(x.status||'Chờ xác nhận').trim().toLocaleLowerCase('vi')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/đ/g,'d');
+  const isCanceled=x=>['huy','da huy','cancelled','canceled'].includes(statusKey(x));
   const isCompleted=x=>{
-    const st=normalizeStatus(x);
-    return st==='đã khám'||st==='da kham'||st==='completed'||st==='done'||
-      exams.some(e=>e.appointmentId===x.firebaseId);
+    const st=statusKey(x);
+    return ['da kham','completed','done'].includes(st) || exams.some(e=>e.appointmentId===x.firebaseId);
   };
-  const isCanceled=x=>{
-    const st=normalizeStatus(x);
-    return st==='hủy'||st==='huỷ'||st==='đã hủy'||st==='đã huỷ'||st==='cancelled'||st==='canceled';
+  const isInProgress=x=>['dang kham','in progress'].includes(statusKey(x));
+  const queueValue=x=>{
+    const raw=String(x.queueNumber??'').trim();
+    const n=parseInt(raw.replace(/[^0-9]/g,''),10);
+    return Number.isFinite(n)&&n>0?n:Number.MAX_SAFE_INTEGER;
   };
   const queueSort=(a,b)=>{
-    const qa=parseInt(String(a.queueNumber??'').replace(/[^\d]/g,''),10);
-    const qb=parseInt(String(b.queueNumber??'').replace(/[^\d]/g,''),10);
-    const aHas=Number.isFinite(qa)&&qa>0, bHas=Number.isFinite(qb)&&qb>0;
-    if(aHas&&bHas&&qa!==qb)return qa-qb;
-    if(aHas!==bHas)return aHas?-1:1;
-    const byDate=String(a.date||'').localeCompare(String(b.date||''));
-    if(byDate)return byDate;
-    return String(a.time||'').localeCompare(String(b.time||''));
+    const qa=queueValue(a),qb=queueValue(b);
+    if(qa!==qb)return qa-qb;
+    const d=String(a.date||'').localeCompare(String(b.date||''));
+    return d||String(a.time||'').localeCompare(String(b.time||''));
   };
-  const pending=filtered.filter(x=>!isCanceled(x)&&!isCompleted(x)).sort(queueSort);
-  const completed=filtered.filter(x=>!isCanceled(x)&&isCompleted(x)).sort(queueSort);
   const canceled=filtered.filter(isCanceled).sort(queueSort);
+  const completed=filtered.filter(x=>!isCanceled(x)&&isCompleted(x)).sort(queueSort);
+  const inProgress=filtered.filter(x=>!isCanceled(x)&&!isCompleted(x)&&isInProgress(x)).sort(queueSort);
+  const pending=filtered.filter(x=>!isCanceled(x)&&!isCompleted(x)&&!isInProgress(x)).sort(queueSort);
 
-  if(!filtered.length){
-    box.innerHTML='<div class="empty">Chưa có lịch hẹn phù hợp.</div>';
-    return;
-  }
-  function addGroupHeading(label,count,kind) {
+  function addGroupHeading(label,count,kind){
     const heading=document.createElement('h3');
     heading.className='appointment-group-heading '+kind;
     heading.textContent=`${label} (${count})`;
     heading.style.cssText='display:block;clear:both;width:100%;box-sizing:border-box;margin:18px 0 8px;padding:10px 12px;background:#e8f4ed;border-left:5px solid #16845b;border-radius:7px;font-size:16px;font-weight:700;color:#176b4d;';
     box.appendChild(heading);
   }
-  function renderOne(x) {
+  function renderOne(x){
     const div=document.createElement('div');div.className='item';
-    const title=document.createElement('strong');
-    title.textContent=`${x.child||'Chưa có tên'} — ${dateLabel(x.date)} ${x.time||''}`;
-    const queue=document.createElement('span');queue.className='queue-number';
-    queue.textContent='STT khám: '+queueLabel(x.queueNumber);
-    const info=document.createElement('p');
-    info.textContent=`Người liên hệ: ${x.parent||'—'} • Điện thoại: ${x.phone||'—'}`;
-    const reason=document.createElement('p');
-    reason.textContent='Lý do khám: '+(x.reason||'Chưa nhập');
-
+    const title=document.createElement('strong');title.textContent=`${x.child||'Chưa có tên'} — ${dateLabel(x.date)} ${x.time||''}`;
+    const queue=document.createElement('span');queue.className='queue-number';queue.textContent='STT khám: '+queueLabel(x.queueNumber);
+    const info=document.createElement('p');info.textContent=`Người liên hệ: ${x.parent||'—'} • Điện thoại: ${x.phone||'—'}`;
+    const reason=document.createElement('p');reason.textContent='Lý do khám: '+(x.reason||'Chưa nhập');
     const status=document.createElement('select');
-    ['Chờ xác nhận','Chờ khám','Đang khám','Đã khám','Hủy'].forEach(s=>{
-      const o=document.createElement('option');o.value=s;o.textContent=s;status.appendChild(o);
-    });
+    ['Chờ xác nhận','Chờ khám','Đang khám','Đã khám','Hủy'].forEach(s=>{const o=document.createElement('option');o.value=s;o.textContent=s;status.appendChild(o);});
     status.value=x.status||'Chờ xác nhận';
     status.addEventListener('change',async()=>{
       const nextStatus=status.value;
@@ -617,70 +605,34 @@ function renderAppointments() {
           await cancelAppointmentForClinic(x);
         }else{
           await appointmentRef.update({status:nextStatus,updatedAt:firebase.firestore.FieldValue.serverTimestamp()});
-          x.status=nextStatus;
-          renderAppointments();
+          x.status=nextStatus;renderAppointments();
         }
-      }catch(error){
-        alert('Không cập nhật được trạng thái: '+error.message);
-        status.value=x.status||'Chờ xác nhận';
-      }
+      }catch(error){alert('Không cập nhật được trạng thái: '+error.message);status.value=x.status||'Chờ xác nhận';}
     });
-
-    const cancelBtn=document.createElement('button');cancelBtn.type='button';
-    cancelBtn.className='secondary';
-    cancelBtn.textContent=x.status==='Hủy'?'Đã hủy lịch':'Hủy lịch hẹn';
+    const cancelBtn=document.createElement('button');cancelBtn.type='button';cancelBtn.className='secondary';
+    cancelBtn.textContent=isCanceled(x)?'Đã hủy lịch':'Hủy lịch hẹn';
     cancelBtn.disabled=isCanceled(x)||isCompleted(x);
-    cancelBtn.title=cancelBtn.disabled?
-      (isCanceled(x)?'Lịch này đã được hủy':'Lịch đã khám, không thể hủy'):
-      'Hủy lịch và giải phóng khung giờ';
-    cancelBtn.addEventListener('click',async()=>{
-      try{
-        await cancelAppointmentForClinic(x);
-        alert('Đã hủy lịch hẹn và giải phóng khung giờ.');
-      }catch(error){
-        alert('Không hủy được lịch hẹn: '+error.message);
-      }
-    });
-
+    cancelBtn.title=cancelBtn.disabled?(isCanceled(x)?'Lịch này đã được hủy':'Lịch đã khám, không thể hủy'):'Hủy lịch và giải phóng khung giờ';
+    cancelBtn.addEventListener('click',async()=>{try{await cancelAppointmentForClinic(x);alert('Đã hủy lịch hẹn và giải phóng khung giờ.');}catch(error){alert('Không hủy được lịch hẹn: '+error.message);}});
     const btn=document.createElement('button');btn.type='button';btn.textContent='Mở phiếu khám';
     btn.addEventListener('click',async()=>{
       currentAppointmentId=x.firebaseId;currentExamId=null;clearExamForm();show('exam');
-      try{
-        currentPatientId=x.patientId||await findOrCreatePatient(x);
-        await db.collection('appointments').doc(x.firebaseId).update({
-          patientId:currentPatientId,updatedAt:firebase.firestore.FieldValue.serverTimestamp()
-        });
-      }catch(error){
-        message('examMessage','Không liên kết được hồ sơ bệnh nhi: '+error.message,'error');
-      }
-      $('patientSelect').value='appointment:'+x.firebaseId;
-      $('eChild').value=x.child||'';$('eDate').value=x.date||'';$('symptoms').value=x.reason||'';
+      try{currentPatientId=x.patientId||await findOrCreatePatient(x);await db.collection('appointments').doc(x.firebaseId).update({patientId:currentPatientId,updatedAt:firebase.firestore.FieldValue.serverTimestamp()});}
+      catch(error){message('examMessage','Không liên kết được hồ sơ bệnh nhi: '+error.message,'error');}
+      $('patientSelect').value='appointment:'+x.firebaseId;$('eChild').value=x.child||'';$('eDate').value=x.date||'';$('symptoms').value=x.reason||'';
       message('examMessage','Đã nạp thông tin lịch hẹn. Bạn có thể hoàn thiện phiếu khám.');
     });
-
-    const badge=document.createElement('span');badge.className='status';
-    badge.textContent=x.status||'Chờ xác nhận';
+    const badge=document.createElement('span');badge.className='status';badge.textContent=x.status||'Chờ xác nhận';
     const pay=payments.find(p=>p.visitType==='appointment'&&p.visitId===x.firebaseId);
-    const payBadge=document.createElement('span');payBadge.className='status';
-    payBadge.textContent=pay?`Thanh toán: ${pay.status||'Đã ghi nhận'}`:'Chưa ghi nhận thanh toán';
-    const payBtn=document.createElement('button');payBtn.type='button';
-    payBtn.className='light';payBtn.textContent='Ghi nhận thanh toán';
-    payBtn.addEventListener('click',()=>{
-      show('paymentSection');$('paymentVisit').value='appointment:'+x.firebaseId;
-      loadPaymentForSelection($('paymentVisit').value);
-    });
-
-    div.append(title,queue,badge,payBadge,info,reason,status,cancelBtn,btn,payBtn);
-    box.appendChild(div);
+    const payBadge=document.createElement('span');payBadge.className='status';payBadge.textContent=pay?`Thanh toán: ${pay.status||'Đã ghi nhận'}`:'Chưa ghi nhận thanh toán';
+    const payBtn=document.createElement('button');payBtn.type='button';payBtn.className='light';payBtn.textContent='Ghi nhận thanh toán';
+    payBtn.addEventListener('click',()=>{show('paymentSection');$('paymentVisit').value='appointment:'+x.firebaseId;loadPaymentForSelection($('paymentVisit').value);});
+    div.append(title,queue,badge,payBadge,info,reason,status,cancelBtn,btn,payBtn);box.appendChild(div);
   }
-
-  // Luôn hiển thị đủ các nhóm để bác sĩ dễ nhận biết vị trí danh sách.
-  addGroupHeading('CHƯA KHÁM — theo số thứ tự',pending.length,'pending');
-  pending.forEach(renderOne);
-  addGroupHeading('ĐÃ KHÁM',completed.length,'completed');
-  completed.forEach(renderOne);
-  addGroupHeading('ĐÃ HỦY',canceled.length,'canceled');
-  canceled.forEach(renderOne);
+  addGroupHeading('CHƯA KHÁM — theo số thứ tự',pending.length,'pending');pending.forEach(renderOne);
+  addGroupHeading('ĐANG KHÁM',inProgress.length,'in-progress');inProgress.forEach(renderOne);
+  addGroupHeading('ĐÃ KHÁM',completed.length,'completed');completed.forEach(renderOne);
+  addGroupHeading('ĐÃ HỦY',canceled.length,'canceled');canceled.forEach(renderOne);
 }
 $('appointmentSearch').addEventListener('input',renderAppointments);
 $('refreshData').addEventListener('click',()=>{renderAppointments();renderPatients();renderHistory();renderPayments();});
@@ -739,11 +691,65 @@ $('patientForm').addEventListener('submit',async e=>{
   catch(error){message('patientMessage','Không lưu được hồ sơ: '+error.message,'error');}
   finally{setBusy(button,false);}
 });
+async function deletePatientAndRelatedData(patient){
+  if(!db||!auth?.currentUser)throw new Error('Vui lòng đăng nhập tài khoản phòng khám.');
+  const patientId=patient.firebaseId;
+  if(!patientId)throw new Error('Không xác định được mã hồ sơ bệnh nhi.');
+
+  // Chỉ lấy dữ liệu gắn bằng patientId; lịch cũ chưa được liên kết được dò thêm bằng cả tên và số điện thoại.
+  const [examSnap,aptByPatient,payByPatient]=await Promise.all([
+    db.collection('examinations').where('patientId','==',patientId).get(),
+    db.collection('appointments').where('patientId','==',patientId).get(),
+    db.collection('payments').where('patientId','==',patientId).get()
+  ]);
+  const examDocs=new Map(examSnap.docs.map(d=>[d.id,d]));
+  const appointmentDocs=new Map(aptByPatient.docs.map(d=>[d.id,d]));
+  if(patient.phone){
+    const legacy=await db.collection('appointments').where('phone','==',patient.phone).get();
+    legacy.docs.forEach(d=>{
+      const v=d.data();
+      if(safeText(v.child).trim().toLocaleLowerCase('vi')===safeText(patient.child).trim().toLocaleLowerCase('vi') && normalizePhone(v.phone)===normalizePhone(patient.phone))appointmentDocs.set(d.id,d);
+    });
+  }
+  const paymentDocs=new Map(payByPatient.docs.map(d=>[d.id,d]));
+  const extraPaymentQueries=[];
+  [...appointmentDocs.keys()].forEach(id=>extraPaymentQueries.push(db.collection('payments').where('appointmentId','==',id).get()));
+  [...examDocs.keys()].forEach(id=>extraPaymentQueries.push(db.collection('payments').where('examinationId','==',id).get()));
+  const extraPayments=await Promise.all(extraPaymentQueries);
+  extraPayments.forEach(snap=>snap.docs.forEach(d=>paymentDocs.set(d.id,d)));
+  // Các mã thanh toán chuẩn của phần mềm, kể cả bản ghi đời cũ thiếu patientId.
+  const deterministicRefs=[...appointmentDocs.keys()].map(id=>db.collection('payments').doc('apt_'+id))
+    .concat([...examDocs.keys()].map(id=>db.collection('payments').doc('exam_'+id)));
+  const deterministicSnaps=await Promise.all(deterministicRefs.map(ref=>ref.get()));
+  deterministicSnaps.forEach(d=>{if(d.exists)paymentDocs.set(d.id,d);});
+
+  const slotRefs=[];
+  for(const doc of appointmentDocs.values()){
+    const a=doc.data();
+    const slotRef=db.collection('appointmentSlots').doc(a.slotId||slotDocumentId(a.date,a.time));
+    slotRefs.push({ref:slotRef,appointmentId:doc.id});
+  }
+  const slotSnaps=await Promise.all(slotRefs.map(x=>x.ref.get()));
+  const refs=new Map();
+  refs.set(db.collection('patients').doc(patientId).path,db.collection('patients').doc(patientId));
+  examDocs.forEach(d=>refs.set(d.ref.path,d.ref));
+  appointmentDocs.forEach(d=>refs.set(d.ref.path,d.ref));
+  paymentDocs.forEach(d=>refs.set(d.ref.path,d.ref));
+  slotSnaps.forEach((snap,i)=>{if(snap.exists&&snap.data().appointmentId===slotRefs[i].appointmentId)refs.set(slotRefs[i].ref.path,slotRefs[i].ref);});
+
+  const allRefs=[...refs.values()];
+  for(let i=0;i<allRefs.length;i+=400){
+    const batch=db.batch();allRefs.slice(i,i+400).forEach(ref=>batch.delete(ref));await batch.commit();
+  }
+  if(currentPatientId===patientId){currentPatientId=null;currentExamId=null;currentAppointmentId=null;}
+  return {patients:1,examinations:examDocs.size,appointments:appointmentDocs.size,payments:paymentDocs.size,documents:allRefs.length};
+}
+
 function renderPatients(){
   const box=$('patientsList');if(!box)return;const q=$('patientSearch').value.trim().toLocaleLowerCase('vi');
   const filtered=patients.filter(p=>safeText(p.child).toLocaleLowerCase('vi').includes(q)||safeText(p.phone).includes(q));box.innerHTML='';
   if(!filtered.length){box.innerHTML='<div class="empty">Chưa có hồ sơ bệnh nhi phù hợp.</div>';return;}
-  filtered.forEach(p=>{const div=document.createElement('div');div.className='item';const title=document.createElement('strong');title.textContent=p.child||'Chưa có tên';const info=document.createElement('p');info.textContent=`Ngày sinh: ${dateLabel(p.dob)||'—'} • Giới tính: ${p.sex||'—'} • Người liên hệ: ${p.parent||'—'} • SĐT: ${p.phone||'—'}`;const actions=document.createElement('div');actions.className='actions no-print';const historyBtn=document.createElement('button');historyBtn.type='button';historyBtn.className='light';historyBtn.textContent='Xem lịch sử khám';historyBtn.addEventListener('click',()=>{show('historySection');$('historyPatientFilter').value=p.firebaseId;renderHistory();});const examBtn=document.createElement('button');examBtn.type='button';examBtn.textContent='Tạo lần khám';examBtn.addEventListener('click',()=>{clearExamForm();currentPatientId=p.firebaseId;currentAppointmentId=null;show('exam');$('patientSelect').value='patient:'+p.firebaseId;$('eChild').value=p.child||'';$('eDate').value=todayLocal();});actions.append(historyBtn,examBtn);div.append(title,info,actions);box.appendChild(div);});
+  filtered.forEach(p=>{const div=document.createElement('div');div.className='item';const title=document.createElement('strong');title.textContent=p.child||'Chưa có tên';const info=document.createElement('p');info.textContent=`Ngày sinh: ${dateLabel(p.dob)||'—'} • Giới tính: ${p.sex||'—'} • Người liên hệ: ${p.parent||'—'} • SĐT: ${p.phone||'—'}`;const actions=document.createElement('div');actions.className='actions no-print';const historyBtn=document.createElement('button');historyBtn.type='button';historyBtn.className='light';historyBtn.textContent='Xem lịch sử khám';historyBtn.addEventListener('click',()=>{show('historySection');$('historyPatientFilter').value=p.firebaseId;renderHistory();});const examBtn=document.createElement('button');examBtn.type='button';examBtn.textContent='Tạo lần khám';examBtn.addEventListener('click',()=>{clearExamForm();currentPatientId=p.firebaseId;currentAppointmentId=null;show('exam');$('patientSelect').value='patient:'+p.firebaseId;$('eChild').value=p.child||'';$('eDate').value=todayLocal();});const deleteBtn=document.createElement('button');deleteBtn.type='button';deleteBtn.className='danger';deleteBtn.textContent='Xóa toàn bộ hồ sơ';deleteBtn.title='Xóa hồ sơ bệnh nhi cùng lịch hẹn, lịch sử khám, đơn thuốc và thanh toán liên quan';deleteBtn.addEventListener('click',async()=>{if(!auth?.currentUser)return alert('Vui lòng đăng nhập tài khoản phòng khám.');const first=window.confirm(`CẢNH BÁO: Bạn sắp xóa vĩnh viễn hồ sơ của bé ${p.child||''}, gồm lịch hẹn, lịch sử khám/đơn thuốc và thanh toán liên quan. Thao tác này không thể hoàn tác. Hãy chắc chắn đã sao lưu dữ liệu. Bạn có muốn tiếp tục?`);if(!first)return;const typed=window.prompt(`Để xác nhận, hãy nhập chính xác họ tên bệnh nhi: ${p.child||''}`);if(typed===null||typed.trim()!==safeText(p.child).trim())return alert('Tên xác nhận không khớp. Chưa xóa dữ liệu.');deleteBtn.disabled=true;deleteBtn.textContent='Đang xóa...';try{const result=await deletePatientAndRelatedData(p);alert(`Đã xóa hồ sơ bệnh nhi và dữ liệu liên quan.\nLịch hẹn: ${result.appointments}\nLần khám/đơn thuốc: ${result.examinations}\nKhoản thanh toán: ${result.payments}`);renderPatients();renderAppointments();renderHistory();renderPayments();}catch(error){alert('Không xóa hết được dữ liệu: '+error.message+'\nHãy kiểm tra quyền Firestore và sao lưu trước khi thử lại.');deleteBtn.disabled=false;deleteBtn.textContent='Xóa toàn bộ hồ sơ';}});actions.append(historyBtn,examBtn,deleteBtn);div.append(title,info,actions);box.appendChild(div);});
 }
 $('patientSearch').addEventListener('input',renderPatients);
 function moneyValue(id){const n=Number($(id).value);return Number.isFinite(n)&&n>0?n:0;}
