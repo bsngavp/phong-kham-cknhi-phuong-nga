@@ -26,6 +26,7 @@ nav{display:flex;gap:7px;flex-wrap:wrap;margin:12px 0}nav button{flex:1 1 140px;
 @media(max-width:600px){header h1{font-size:21px}main{padding:8px}.card{padding:14px}nav button{flex:1 1 44%}.actions button{min-width:100%}}
 @media print{body{background:#fff}header,nav,.no-print,#loginBox,#accountBox,.no-print-print{display:none!important}main{max-width:none;padding:0}.card{box-shadow:none;margin:0;padding:0}.print-only{display:block!important}}
 
+/* Giữ kiểu chữ tiêu đề đậm, bo tròn theo mẫu cũ */
 /* Giao diện mới theo mẫu tham khảo - giữ nguyên nội dung và nghiệp vụ cũ */
 :root{--green:#08794f;--green-dark:#056341;--mint:#eaf7ef;--bg:#f4faf6;--text:#24443a;--muted:#71827a;--border:#dce9e1;--danger:#b42318}
 body{font-family:Arial,Helvetica,sans-serif;background:linear-gradient(180deg,#f7fbf8 0%,#edf7f1 100%);color:var(--text)}
@@ -33,7 +34,7 @@ body{font-family:Arial,Helvetica,sans-serif;background:linear-gradient(180deg,#f
 .clinic-brand{max-width:1180px;display:flex;align-items:center;justify-content:flex-start;gap:18px;margin:0 auto}
 .clinic-logo{width:94px;height:94px;flex:0 0 94px;object-fit:contain;border-radius:50%;background:transparent}
 .clinic-heading{flex:1;min-width:0}
-.clinic-heading h1{font-size:clamp(20px,2.5vw,30px);font-weight:800;letter-spacing:-.4px;color:#08794f;margin:0 0 5px}
+.clinic-heading h1{font-family:"Arial Rounded MT Bold","Trebuchet MS",Arial,sans-serif;font-size:clamp(20px,2.5vw,30px);font-weight:900;letter-spacing:-.55px;color:#08794f;margin:0 0 5px;text-shadow:0 .2px 0 currentColor}
 .clinic-contact{color:#45695b;font-size:14px;margin:4px 0}
 .mobile-menu-toggle{display:none;width:44px;min-width:44px;height:44px;padding:0;margin:0;border-radius:12px;background:#eff8f2;color:var(--green);font-size:23px}
 .public-nav{max-width:none;background:linear-gradient(90deg,#08794f,#0a8b5d);display:flex;justify-content:center;gap:0;padding:0 max(8px,calc((100% - 1180px)/2));box-shadow:0 4px 12px #064b331c}
@@ -43,7 +44,7 @@ body{font-family:Arial,Helvetica,sans-serif;background:linear-gradient(180deg,#f
 .hero-banner{max-width:1180px;min-height:265px;margin:22px auto 18px;padding:28px 4.5%;border-radius:22px;overflow:hidden;position:relative;display:flex;align-items:center;background:radial-gradient(circle at 82% 25%,#d5f0d8 0 13%,transparent 34%),linear-gradient(105deg,#f0faef 0%,#e4f5e7 50%,#c8e9d0 100%);box-shadow:0 8px 24px #175a3514}
 .hero-copy{position:relative;z-index:2;max-width:600px}
 .hero-kicker{font-family:Georgia,serif;font-style:italic;color:#26825c;font-size:clamp(18px,2vw,24px);margin:0 0 4px}
-.hero-copy h2{font-size:clamp(27px,4vw,42px);line-height:1.12;color:#086b48;margin:0 0 10px;font-weight:800}
+.hero-copy h2{font-family:"Arial Rounded MT Bold","Trebuchet MS",Arial,sans-serif;font-size:clamp(27px,4vw,42px);line-height:1.12;color:#086b48;margin:0 0 10px;font-weight:900;letter-spacing:-.65px;text-shadow:0 .2px 0 currentColor}
 .hero-copy>p:not(.hero-kicker){max-width:510px;color:#426d59;font-size:15px;margin:0 0 16px}
 .hero-cta{width:auto;min-width:190px;padding:12px 18px;border-radius:28px;background:linear-gradient(90deg,#08794f,#13a36b);box-shadow:0 5px 12px #08794f30}
 .hero-cta span{padding-left:18px}
