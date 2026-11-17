@@ -555,33 +555,42 @@ function renderAppointments() {
   );
 
   box.innerHTML='';
+  const normalizeStatus=x=>String(x.status||'Chờ xác nhận').trim().toLocaleLowerCase('vi');
+  // Một lịch được xem là đã khám nếu trạng thái đã khám hoặc đã có phiếu khám liên kết.
+  const isCompleted=x=>{
+    const st=normalizeStatus(x);
+    return st==='đã khám'||st==='da kham'||st==='completed'||st==='done'||
+      exams.some(e=>e.appointmentId===x.firebaseId);
+  };
+  const isCanceled=x=>{
+    const st=normalizeStatus(x);
+    return st==='hủy'||st==='huỷ'||st==='đã hủy'||st==='đã huỷ'||st==='cancelled'||st==='canceled';
+  };
+  const queueSort=(a,b)=>{
+    const qa=parseInt(String(a.queueNumber??'').replace(/[^\d]/g,''),10);
+    const qb=parseInt(String(b.queueNumber??'').replace(/[^\d]/g,''),10);
+    const aHas=Number.isFinite(qa)&&qa>0, bHas=Number.isFinite(qb)&&qb>0;
+    if(aHas&&bHas&&qa!==qb)return qa-qb;
+    if(aHas!==bHas)return aHas?-1:1;
+    const byDate=String(a.date||'').localeCompare(String(b.date||''));
+    if(byDate)return byDate;
+    return String(a.time||'').localeCompare(String(b.time||''));
+  };
+  const pending=filtered.filter(x=>!isCanceled(x)&&!isCompleted(x)).sort(queueSort);
+  const completed=filtered.filter(x=>!isCanceled(x)&&isCompleted(x)).sort(queueSort);
+  const canceled=filtered.filter(isCanceled).sort(queueSort);
+
   if(!filtered.length){
     box.innerHTML='<div class="empty">Chưa có lịch hẹn phù hợp.</div>';
     return;
   }
-
-  // Ưu tiên lịch chưa khám ở trên; trong từng nhóm sắp theo số thứ tự tăng dần.
-  const queueSort=(a,b)=>{
-    const qa=Number(a.queueNumber), qb=Number(b.queueNumber);
-    const aHas=Number.isFinite(qa)&&qa>0, bHas=Number.isFinite(qb)&&qb>0;
-    if(aHas&&bHas&&qa!==qb)return qa-qb;
-    if(aHas!==bHas)return aHas?-1:1;
-    return `${a.date||''} ${a.time||''}`.localeCompare(`${b.date||''} ${b.time||''}`);
-  };
-  const isCanceled=x=>x.status==='Hủy';
-  const isCompleted=x=>x.status==='Đã khám';
-  const pending=filtered.filter(x=>!isCanceled(x)&&!isCompleted(x)).sort(queueSort);
-  const completed=filtered.filter(isCompleted).sort(queueSort);
-  const canceled=filtered.filter(isCanceled).sort(queueSort);
-
-  function addGroupHeading(label,count) {
+  function addGroupHeading(label,count,kind) {
     const heading=document.createElement('h3');
-    heading.className='appointment-group-heading';
+    heading.className='appointment-group-heading '+kind;
     heading.textContent=`${label} (${count})`;
-    heading.style.cssText='margin:18px 0 6px;padding:9px 12px;background:#e8f4ed;border-left:4px solid #16845b;border-radius:7px;';
+    heading.style.cssText='display:block;clear:both;width:100%;box-sizing:border-box;margin:18px 0 8px;padding:10px 12px;background:#e8f4ed;border-left:5px solid #16845b;border-radius:7px;font-size:16px;font-weight:700;color:#176b4d;';
     box.appendChild(heading);
   }
-
   function renderOne(x) {
     const div=document.createElement('div');div.className='item';
     const title=document.createElement('strong');
@@ -608,6 +617,8 @@ function renderAppointments() {
           await cancelAppointmentForClinic(x);
         }else{
           await appointmentRef.update({status:nextStatus,updatedAt:firebase.firestore.FieldValue.serverTimestamp()});
+          x.status=nextStatus;
+          renderAppointments();
         }
       }catch(error){
         alert('Không cập nhật được trạng thái: '+error.message);
@@ -618,9 +629,9 @@ function renderAppointments() {
     const cancelBtn=document.createElement('button');cancelBtn.type='button';
     cancelBtn.className='secondary';
     cancelBtn.textContent=x.status==='Hủy'?'Đã hủy lịch':'Hủy lịch hẹn';
-    cancelBtn.disabled=x.status==='Hủy'||x.status==='Đã khám';
+    cancelBtn.disabled=isCanceled(x)||isCompleted(x);
     cancelBtn.title=cancelBtn.disabled?
-      (x.status==='Hủy'?'Lịch này đã được hủy':'Lịch đã khám, không thể hủy'):
+      (isCanceled(x)?'Lịch này đã được hủy':'Lịch đã khám, không thể hủy'):
       'Hủy lịch và giải phóng khung giờ';
     cancelBtn.addEventListener('click',async()=>{
       try{
@@ -663,18 +674,13 @@ function renderAppointments() {
     box.appendChild(div);
   }
 
-  if(pending.length){
-    addGroupHeading('CHƯA KHÁM — theo số thứ tự',pending.length);
-    pending.forEach(renderOne);
-  }
-  if(completed.length){
-    addGroupHeading('ĐÃ KHÁM',completed.length);
-    completed.forEach(renderOne);
-  }
-  if(canceled.length){
-    addGroupHeading('ĐÃ HỦY',canceled.length);
-    canceled.forEach(renderOne);
-  }
+  // Luôn hiển thị đủ các nhóm để bác sĩ dễ nhận biết vị trí danh sách.
+  addGroupHeading('CHƯA KHÁM — theo số thứ tự',pending.length,'pending');
+  pending.forEach(renderOne);
+  addGroupHeading('ĐÃ KHÁM',completed.length,'completed');
+  completed.forEach(renderOne);
+  addGroupHeading('ĐÃ HỦY',canceled.length,'canceled');
+  canceled.forEach(renderOne);
 }
 $('appointmentSearch').addEventListener('input',renderAppointments);
 $('refreshData').addEventListener('click',()=>{renderAppointments();renderPatients();renderHistory();renderPayments();});
