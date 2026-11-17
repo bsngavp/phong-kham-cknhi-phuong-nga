@@ -104,7 +104,9 @@ nav{display:flex;gap:7px;flex-wrap:wrap;margin:12px 0}nav button{flex:1 1 140px;
       <button type="submit">Lưu hồ sơ bệnh nhi</button><p id="patientMessage" class="message" role="status"></p>
     </form>
     <hr style="border:0;border-top:1px solid var(--border);margin:18px 0">
+    <div class="notice"><strong>Quản lý hồ sơ bệnh nhi:</strong> Mỗi hồ sơ bên dưới có nút đỏ <strong>🗑 XÓA TOÀN BỘ HỒ SƠ</strong> ở cuối. Thao tác này xóa cả lịch hẹn, lịch sử khám/đơn thuốc và thanh toán liên quan sau khi xác nhận hai bước.</div>
     <label for="patientSearch">Tìm bệnh nhi theo tên hoặc số điện thoại</label><input id="patientSearch" placeholder="Nhập tên hoặc số điện thoại">
+    <h3 style="margin-top:14px">Danh sách bệnh nhi</h3>
     <div id="patientsList"></div>
   </section>
 
@@ -746,10 +748,67 @@ async function deletePatientAndRelatedData(patient){
 }
 
 function renderPatients(){
-  const box=$('patientsList');if(!box)return;const q=$('patientSearch').value.trim().toLocaleLowerCase('vi');
-  const filtered=patients.filter(p=>safeText(p.child).toLocaleLowerCase('vi').includes(q)||safeText(p.phone).includes(q));box.innerHTML='';
-  if(!filtered.length){box.innerHTML='<div class="empty">Chưa có hồ sơ bệnh nhi phù hợp.</div>';return;}
-  filtered.forEach(p=>{const div=document.createElement('div');div.className='item';const title=document.createElement('strong');title.textContent=p.child||'Chưa có tên';const info=document.createElement('p');info.textContent=`Ngày sinh: ${dateLabel(p.dob)||'—'} • Giới tính: ${p.sex||'—'} • Người liên hệ: ${p.parent||'—'} • SĐT: ${p.phone||'—'}`;const actions=document.createElement('div');actions.className='actions no-print';const historyBtn=document.createElement('button');historyBtn.type='button';historyBtn.className='light';historyBtn.textContent='Xem lịch sử khám';historyBtn.addEventListener('click',()=>{show('historySection');$('historyPatientFilter').value=p.firebaseId;renderHistory();});const examBtn=document.createElement('button');examBtn.type='button';examBtn.textContent='Tạo lần khám';examBtn.addEventListener('click',()=>{clearExamForm();currentPatientId=p.firebaseId;currentAppointmentId=null;show('exam');$('patientSelect').value='patient:'+p.firebaseId;$('eChild').value=p.child||'';$('eDate').value=todayLocal();});const deleteBtn=document.createElement('button');deleteBtn.type='button';deleteBtn.className='danger';deleteBtn.textContent='Xóa toàn bộ hồ sơ';deleteBtn.title='Xóa hồ sơ bệnh nhi cùng lịch hẹn, lịch sử khám, đơn thuốc và thanh toán liên quan';deleteBtn.addEventListener('click',async()=>{if(!auth?.currentUser)return alert('Vui lòng đăng nhập tài khoản phòng khám.');const first=window.confirm(`CẢNH BÁO: Bạn sắp xóa vĩnh viễn hồ sơ của bé ${p.child||''}, gồm lịch hẹn, lịch sử khám/đơn thuốc và thanh toán liên quan. Thao tác này không thể hoàn tác. Hãy chắc chắn đã sao lưu dữ liệu. Bạn có muốn tiếp tục?`);if(!first)return;const typed=window.prompt(`Để xác nhận, hãy nhập chính xác họ tên bệnh nhi: ${p.child||''}`);if(typed===null||typed.trim()!==safeText(p.child).trim())return alert('Tên xác nhận không khớp. Chưa xóa dữ liệu.');deleteBtn.disabled=true;deleteBtn.textContent='Đang xóa...';try{const result=await deletePatientAndRelatedData(p);alert(`Đã xóa hồ sơ bệnh nhi và dữ liệu liên quan.\nLịch hẹn: ${result.appointments}\nLần khám/đơn thuốc: ${result.examinations}\nKhoản thanh toán: ${result.payments}`);renderPatients();renderAppointments();renderHistory();renderPayments();}catch(error){alert('Không xóa hết được dữ liệu: '+error.message+'\nHãy kiểm tra quyền Firestore và sao lưu trước khi thử lại.');deleteBtn.disabled=false;deleteBtn.textContent='Xóa toàn bộ hồ sơ';}});actions.append(historyBtn,examBtn,deleteBtn);div.append(title,info,actions);box.appendChild(div);});
+  const box=$('patientsList');if(!box)return;
+  const q=$('patientSearch').value.trim().toLocaleLowerCase('vi');
+  const filtered=patients.filter(p=>
+    safeText(p.child).toLocaleLowerCase('vi').includes(q) ||
+    safeText(p.phone).includes(q)
+  );
+  box.innerHTML='';
+  if(!filtered.length){
+    box.innerHTML='<div class="empty">Chưa có hồ sơ bệnh nhi phù hợp.</div>';
+    return;
+  }
+  filtered.forEach(p=>{
+    const div=document.createElement('div');div.className='item';
+    div.style.cssText='padding:15px 12px;margin:10px 0;border:1px solid var(--border);border-radius:10px;background:#fff;';
+    const title=document.createElement('strong');
+    title.textContent=p.child||'Chưa có tên';
+    title.style.cssText='display:block;font-size:17px;margin-bottom:5px;';
+    const info=document.createElement('p');
+    info.textContent=`Ngày sinh: ${dateLabel(p.dob)||'—'} • Giới tính: ${p.sex||'—'} • Người liên hệ: ${p.parent||'—'} • SĐT: ${p.phone||'—'}`;
+    const actions=document.createElement('div');actions.className='actions no-print';
+    const historyBtn=document.createElement('button');
+    historyBtn.type='button';historyBtn.className='light';
+    historyBtn.textContent='Xem lịch sử khám';
+    historyBtn.addEventListener('click',()=>{
+      show('historySection');$('historyPatientFilter').value=p.firebaseId;renderHistory();
+    });
+    const examBtn=document.createElement('button');
+    examBtn.type='button';examBtn.textContent='Tạo lần khám';
+    examBtn.addEventListener('click',()=>{
+      clearExamForm();currentPatientId=p.firebaseId;currentAppointmentId=null;show('exam');
+      $('patientSelect').value='patient:'+p.firebaseId;$('eChild').value=p.child||'';$('eDate').value=todayLocal();
+    });
+    actions.append(historyBtn,examBtn);
+
+    const deleteBtn=document.createElement('button');
+    deleteBtn.type='button';deleteBtn.className='danger no-print';
+    deleteBtn.textContent='🗑 XÓA TOÀN BỘ HỒ SƠ BỆNH NHI';
+    deleteBtn.title='Xóa hồ sơ bệnh nhi cùng lịch hẹn, lịch sử khám/đơn thuốc và thanh toán liên quan';
+    deleteBtn.style.cssText='display:block;width:100%;margin-top:10px;padding:13px;background:#b42318;color:white;font-weight:800;border:2px solid #8f1b13;border-radius:9px;';
+    deleteBtn.addEventListener('click',async()=>{
+      if(!auth?.currentUser)return alert('Vui lòng đăng nhập tài khoản phòng khám.');
+      const first=window.confirm(`CẢNH BÁO: Bạn sắp xóa vĩnh viễn hồ sơ của bé ${p.child||''}, gồm lịch hẹn, lịch sử khám/đơn thuốc và thanh toán liên quan. Thao tác này không thể hoàn tác. Hãy chắc chắn đã sao lưu dữ liệu. Bạn có muốn tiếp tục?`);
+      if(!first)return;
+      const typed=window.prompt(`Để xác nhận, hãy nhập chính xác họ tên bệnh nhi: ${p.child||''}`);
+      if(typed===null||typed.trim()!==safeText(p.child).trim()){
+        alert('Tên xác nhận không khớp. Chưa xóa dữ liệu.');
+        return;
+      }
+      deleteBtn.disabled=true;deleteBtn.textContent='Đang xóa hồ sơ...';
+      try{
+        const result=await deletePatientAndRelatedData(p);
+        alert(`Đã xóa hồ sơ bệnh nhi và dữ liệu liên quan.\nLịch hẹn: ${result.appointments}\nLần khám/đơn thuốc: ${result.examinations}\nKhoản thanh toán: ${result.payments}`);
+        renderPatients();renderAppointments();renderHistory();renderPayments();
+      }catch(error){
+        alert('Không xóa hết được dữ liệu: '+error.message+'\nHãy kiểm tra quyền Firestore và sao lưu trước khi thử lại.');
+        deleteBtn.disabled=false;deleteBtn.textContent='🗑 XÓA TOÀN BỘ HỒ SƠ BỆNH NHI';
+      }
+    });
+    div.append(title,info,actions,deleteBtn);
+    box.appendChild(div);
+  });
 }
 $('patientSearch').addEventListener('input',renderPatients);
 function moneyValue(id){const n=Number($(id).value);return Number.isFinite(n)&&n>0?n:0;}
