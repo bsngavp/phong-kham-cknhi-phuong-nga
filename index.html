@@ -1126,6 +1126,14 @@ function initFirebase(){
       $('loginBox').classList.toggle('hidden',!!user);
       $('accountBox').classList.toggle('hidden',!user);
       $('appMain').classList.toggle('hidden',!user);
+
+      // Ẩn khu vực phụ huynh tự đăng ký lịch khi nhân viên đã đăng nhập.
+      // Khi đăng xuất, biểu mẫu và các nút dẫn tới biểu mẫu sẽ hiện lại.
+      $('bookingCard').classList.toggle('hidden',!!user);
+      document.querySelectorAll('#publicNav [data-public-action="booking"], .hero-cta[data-public-action="booking"]').forEach(el=>{
+        el.classList.toggle('hidden',!!user);
+      });
+
       if(user){$('accountEmail').textContent='Tài khoản: '+(user.email||'');startLiveListeners();show('list');}
       else{stopLiveListeners();$('accountEmail').textContent='';}
     },error=>message('loginMessage','Không kiểm tra được trạng thái đăng nhập: '+error.message,'error'));
