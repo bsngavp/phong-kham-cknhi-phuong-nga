@@ -654,6 +654,9 @@ async function cancelAppointmentForClinic(appointment) {
     // Chỉ giải phóng khóa giờ nếu khóa đó vẫn thuộc đúng lịch đang hủy.
     if(slotSnap.exists && slotSnap.data().appointmentId===appointment.firebaseId) tx.delete(slotRef);
   });
+  // Đánh dấu trong bộ nhớ và cập nhật ngay danh sách: lịch đã hủy biến mất khỏi danh sách hoạt động.
+  appointment.status='Hủy';
+  renderAppointments();
   // Nếu đang xem đúng ngày vừa hủy, tải lại ngay danh sách giờ còn trống.
   if ($('date') && $('date').value === appointment.date) await populateBookingTimes();
 }
@@ -661,15 +664,16 @@ async function cancelAppointmentForClinic(appointment) {
 function renderAppointments() {
   const box=$('appointments'); if(!box)return;
   const q=$('appointmentSearch').value.trim().toLocaleLowerCase('vi');
-  const filtered=appointments.filter(x=>
-    safeText(x.child).toLocaleLowerCase('vi').includes(q) || safeText(x.phone).includes(q)
-  );
-  box.innerHTML='';
-  if(!filtered.length){box.innerHTML='<div class="empty">Chưa có lịch hẹn phù hợp.</div>';return;}
-
   const statusKey=x=>String(x.status||'Chờ xác nhận').trim().toLocaleLowerCase('vi')
     .normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/đ/g,'d');
   const isCanceled=x=>['huy','da huy','cancelled','canceled'].includes(statusKey(x));
+  // Lịch đã hủy được giữ trong Firestore để tra cứu khi cần, nhưng không hiện trong danh sách lịch hẹn.
+  const filtered=appointments.filter(x=>!isCanceled(x) && (
+    safeText(x.child).toLocaleLowerCase('vi').includes(q) || safeText(x.phone).includes(q)
+  ));
+  box.innerHTML='';
+  if(!filtered.length){box.innerHTML='<div class="empty">Không có lịch hẹn đang hoạt động phù hợp.</div>';return;}
+
   const isCompleted=x=>{
     const st=statusKey(x);
     return ['da kham','completed','done'].includes(st) || exams.some(e=>e.appointmentId===x.firebaseId);
@@ -686,7 +690,6 @@ function renderAppointments() {
     const d=String(a.date||'').localeCompare(String(b.date||''));
     return d||String(a.time||'').localeCompare(String(b.time||''));
   };
-  const canceled=filtered.filter(isCanceled).sort(queueSort);
   const completed=filtered.filter(x=>!isCanceled(x)&&isCompleted(x)).sort(queueSort);
   const inProgress=filtered.filter(x=>!isCanceled(x)&&!isCompleted(x)&&isInProgress(x)).sort(queueSort);
   const pending=filtered.filter(x=>!isCanceled(x)&&!isCompleted(x)&&!isInProgress(x)).sort(queueSort);
@@ -744,7 +747,6 @@ function renderAppointments() {
   addGroupHeading('CHƯA KHÁM — theo số thứ tự',pending.length,'pending');pending.forEach(renderOne);
   addGroupHeading('ĐANG KHÁM',inProgress.length,'in-progress');inProgress.forEach(renderOne);
   addGroupHeading('ĐÃ KHÁM',completed.length,'completed');completed.forEach(renderOne);
-  addGroupHeading('ĐÃ HỦY',canceled.length,'canceled');canceled.forEach(renderOne);
 }
 $('appointmentSearch').addEventListener('input',renderAppointments);
 $('refreshData').addEventListener('click',()=>{renderAppointments();renderPatients();renderHistory();renderPayments();});
