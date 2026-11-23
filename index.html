@@ -279,6 +279,11 @@ button:active{transform:translateY(1px)}
         <div><small>Còn phải thu</small><h3 id="paymentDue">0 ₫</h3></div>
         <div><small>Trạng thái</small><h3 id="paymentStatusPreview">Chưa thanh toán</h3></div>
       </div>
+      <label for="markPaidCheckbox" class="payment-paid-toggle" style="display:flex;align-items:center;gap:10px;margin-top:14px;padding:12px 14px;border:1px solid #a8d9ba;border-radius:10px;background:#eaf7ef;color:#08794f;font-weight:800;cursor:pointer;">
+        <input id="markPaidCheckbox" type="checkbox" style="width:22px;height:22px;accent-color:#08794f;margin:0;">
+        ✓ Đánh dấu bệnh nhân đã thanh toán đủ
+      </label>
+      <small style="display:block;margin-top:6px;color:#64756c;">Khi tích mục này, phần mềm tự điền số tiền đã thu bằng tổng cần thanh toán. Hãy chỉ tích sau khi đã thực nhận tiền.</small>
     </div>
     <label for="paymentNote">Ghi chú thanh toán</label><textarea id="paymentNote" rows="2" maxlength="1000" placeholder="Ví dụ: phụ huynh chuyển khoản lúc..."></textarea>
     <div class="actions no-print"><button type="button" id="savePayment">💾 Lưu thanh toán</button><button type="button" id="printPayment" class="secondary">🖨️ In phiếu thu</button><button type="button" id="resetPayment" class="secondary">Làm mới biểu mẫu</button></div>
@@ -955,6 +960,8 @@ function calculatePayment(){
   const total=Math.max(0,moneyValue('consultationFee')+moneyValue('medicineFee')+moneyValue('otherFee')-moneyValue('discountFee'));
   const paid=moneyValue('paidAmount');const due=Math.max(0,total-paid);
   const status=paid<=0?'Chưa thanh toán':(paid<total?'Thanh toán một phần':'Đã thanh toán');
+  const paidToggle=$('markPaidCheckbox');
+  if(paidToggle)paidToggle.checked=total>0 && paid>=total;
   $('paymentTotal').textContent=formatMoney(total);
   $('paymentDue').textContent=formatMoney(due);
   const statusEl=$('paymentStatusPreview');
@@ -967,6 +974,21 @@ function calculatePayment(){
   return {total,paid,due,status};
 }
 ['consultationFee','medicineFee','otherFee','discountFee','paidAmount'].forEach(id=>$(id).addEventListener('input',calculatePayment));
+$('markPaidCheckbox').addEventListener('change',()=>{
+  const total=Math.max(0,moneyValue('consultationFee')+moneyValue('medicineFee')+moneyValue('otherFee')-moneyValue('discountFee'));
+  if($('markPaidCheckbox').checked){
+    if(total<=0){
+      $('markPaidCheckbox').checked=false;
+      message('paymentMessage','Vui lòng nhập khoản phí trước khi đánh dấu đã thanh toán.','error');
+      return;
+    }
+    $('paidAmount').value=total;
+    $('collectedDate').value=$('collectedDate').value||todayLocal();
+  }else{
+    $('paidAmount').value=0;
+  }
+  calculatePayment();
+});
 function paymentDocId(selection){
   if(!selection)return '';
   const [kind,id]=selection.split(':');
