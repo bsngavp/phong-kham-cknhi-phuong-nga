@@ -757,8 +757,16 @@ function renderAppointments() {
     });
     const badge=document.createElement('span');badge.className='status';badge.textContent=x.status||'Chờ xác nhận';
     const pay=payments.find(p=>p.visitType==='appointment'&&p.visitId===x.firebaseId);
-    const payBadge=document.createElement('span');payBadge.className='status';payBadge.textContent=pay?`Thanh toán: ${pay.status||'Đã ghi nhận'}`:'Chưa ghi nhận thanh toán';
-    const payBtn=document.createElement('button');payBtn.type='button';payBtn.className='light';payBtn.textContent='Ghi nhận thanh toán';
+    const payStatus=pay?.status||'Chưa thanh toán';
+    const payBadge=document.createElement('span');payBadge.className='status';
+    payBadge.textContent=payStatus==='Đã thanh toán'?'✓ Đã thanh toán':payStatus==='Thanh toán một phần'?'Đã thu một phần':'Chưa thanh toán';
+    payBadge.style.cssText=payStatus==='Đã thanh toán'
+      ?'background:#e5f5eb;color:#08794f;font-weight:800;border:1px solid #a8d9ba;'
+      :payStatus==='Thanh toán một phần'
+        ?'background:#fff6df;color:#946200;font-weight:700;'
+        :'background:#fff0ef;color:#b42318;';
+    const payBtn=document.createElement('button');payBtn.type='button';payBtn.className='light';
+    payBtn.textContent=payStatus==='Đã thanh toán'?'✓ Đã thanh toán – xem phiếu thu':payStatus==='Thanh toán một phần'?'Cập nhật khoản thu':'Ghi nhận thanh toán';
     payBtn.addEventListener('click',()=>{show('paymentSection');$('paymentVisit').value='appointment:'+x.firebaseId;loadPaymentForSelection($('paymentVisit').value);});
     div.append(title,queue,badge,payBadge,info,reason,status,cancelBtn,btn,payBtn);box.appendChild(div);
   }
@@ -947,7 +955,15 @@ function calculatePayment(){
   const total=Math.max(0,moneyValue('consultationFee')+moneyValue('medicineFee')+moneyValue('otherFee')-moneyValue('discountFee'));
   const paid=moneyValue('paidAmount');const due=Math.max(0,total-paid);
   const status=paid<=0?'Chưa thanh toán':(paid<total?'Thanh toán một phần':'Đã thanh toán');
-  $('paymentTotal').textContent=formatMoney(total);$('paymentDue').textContent=formatMoney(due);$('paymentStatusPreview').textContent=status;
+  $('paymentTotal').textContent=formatMoney(total);
+  $('paymentDue').textContent=formatMoney(due);
+  const statusEl=$('paymentStatusPreview');
+  statusEl.textContent=status;
+  statusEl.style.cssText=status==='Đã thanh toán'
+    ?'color:#08794f;font-weight:800;'
+    :status==='Thanh toán một phần'
+      ?'color:#b7791f;font-weight:800;'
+      :'color:#b42318;font-weight:800;';
   return {total,paid,due,status};
 }
 ['consultationFee','medicineFee','otherFee','discountFee','paidAmount'].forEach(id=>$(id).addEventListener('input',calculatePayment));
@@ -1004,7 +1020,17 @@ $('savePayment').addEventListener('click',async()=>{
     const ref=db.collection('payments').doc(paymentDocId(selection));
     const old=await ref.get();if(!old.exists)record.createdAt=firebase.firestore.FieldValue.serverTimestamp();
     await ref.set(record,{merge:true});
-    message('paymentMessage','Đã lưu thông tin thanh toán thành công.');
+    const savedPayment={...record,firebaseId:docId};
+    const existingIndex=payments.findIndex(p=>p.firebaseId===docId);
+    if(existingIndex>=0)payments[existingIndex]=savedPayment;else payments.push(savedPayment);
+    renderPayments();renderMonthlyRevenue();renderAppointments();
+    if(record.status==='Đã thanh toán'){
+      message('paymentMessage','✓ Đã thanh toán đầy đủ. Trạng thái đã được cập nhật trong danh sách thanh toán và lịch hẹn.','success');
+    }else if(record.status==='Thanh toán một phần'){
+      message('paymentMessage','Đã lưu khoản thu một phần. Hồ sơ đang ở trạng thái còn phải thu.','');
+    }else{
+      message('paymentMessage','Đã lưu khoản thanh toán. Hiện chưa ghi nhận tiền đã thu.','');
+    }
   }catch(error){console.error('Lỗi lưu thanh toán:',error);message('paymentMessage','Không lưu được thanh toán: '+(error.code||'')+' '+error.message,'error');}
   finally{setBusy(button,false);}
 });
@@ -1029,12 +1055,20 @@ function renderPayments(){
     const div=document.createElement('div');div.className='item';
     const title=document.createElement('strong');title.textContent=`${p.child||'Chưa có tên'} • ${dateLabel(p.date)}`;
     const info=document.createElement('p');info.textContent=`Tổng: ${formatMoney(p.total)} • Đã thu: ${formatMoney(p.paidAmount)} • Còn: ${formatMoney(p.dueAmount)}`;
-    const meta=document.createElement('p');meta.textContent=`Hình thức: ${p.method||'—'} • Trạng thái: ${p.status||'—'} • STT: ${queueLabel(p.queueNumber)}`;
-    const edit=document.createElement('button');edit.type='button';edit.className='light';edit.textContent='Mở / sửa khoản thu';edit.addEventListener('click',()=>{
+    const meta=document.createElement('p');
+    meta.textContent=`Hình thức: ${p.method||'—'} • STT: ${queueLabel(p.queueNumber)}`;
+    const status=document.createElement('strong');
+    status.textContent=p.status==='Đã thanh toán'?'✓ ĐÃ THANH TOÁN':p.status==='Thanh toán một phần'?'ĐÃ THU MỘT PHẦN':'CHƯA THANH TOÁN';
+    status.style.cssText=p.status==='Đã thanh toán'
+      ?'display:inline-block;margin:4px 0;padding:6px 10px;border-radius:7px;background:#e5f5eb;color:#08794f;'
+      :p.status==='Thanh toán một phần'
+        ?'display:inline-block;margin:4px 0;padding:6px 10px;border-radius:7px;background:#fff6df;color:#946200;'
+        :'display:inline-block;margin:4px 0;padding:6px 10px;border-radius:7px;background:#fff0ef;color:#b42318;';
+    const edit=document.createElement('button');edit.type='button';edit.className='light';edit.textContent=p.status==='Đã thanh toán'?'Xem / in phiếu thu':'Mở / sửa khoản thu';edit.addEventListener('click',()=>{
       const selection=(p.visitType==='exam'?'exam:':'appointment:')+p.visitId;
       show('paymentSection');populatePaymentVisitSelect();$('paymentVisit').value=selection;loadPaymentForSelection(selection);
     });
-    div.append(title,info,meta,edit);box.appendChild(div);
+    div.append(title,info,meta,status,edit);box.appendChild(div);
   });
 }
 
