@@ -270,6 +270,7 @@ button:active{transform:translateY(1px)}
       <div><label for="otherFee">Khoản thu khác (VNĐ)</label><input id="otherFee" type="number" min="0" step="1000" value="0"></div>
       <div><label for="discountFee">Giảm trừ (VNĐ)</label><input id="discountFee" type="number" min="0" step="1000" value="0"></div>
       <div><label for="paidAmount">Số tiền đã thu (VNĐ)</label><input id="paidAmount" type="number" min="0" step="1000" value="0"></div>
+      <div><label for="collectedDate">Ngày thu tiền</label><input id="collectedDate" type="date"></div>
       <div><label for="paymentMethod">Hình thức thanh toán</label><select id="paymentMethod"><option value="Tiền mặt">Tiền mặt</option><option value="Chuyển khoản">Chuyển khoản</option><option value="Thẻ">Thẻ</option><option value="Ví điện tử">Ví điện tử</option><option value="Khác">Khác</option></select></div>
     </div>
     <div class="notice" aria-live="polite">
@@ -282,6 +283,23 @@ button:active{transform:translateY(1px)}
     <label for="paymentNote">Ghi chú thanh toán</label><textarea id="paymentNote" rows="2" maxlength="1000" placeholder="Ví dụ: phụ huynh chuyển khoản lúc..."></textarea>
     <div class="actions no-print"><button type="button" id="savePayment">💾 Lưu thanh toán</button><button type="button" id="printPayment" class="secondary">🖨️ In phiếu thu</button><button type="button" id="resetPayment" class="secondary">Làm mới biểu mẫu</button></div>
     <p id="paymentMessage" class="message" role="status" aria-live="polite"></p>
+    <hr style="border:0;border-top:1px solid var(--border);margin:22px 0">
+    <section id="monthlyRevenueReport" class="notice" style="padding:16px;border-radius:14px">
+      <h3 style="margin-top:0">📊 Báo cáo doanh thu hàng tháng</h3>
+      <div class="grid" style="align-items:end">
+        <div><label for="revenueMonth">Chọn tháng báo cáo</label><input id="revenueMonth" type="month"></div>
+        <div class="actions no-print"><button type="button" id="refreshRevenue" class="light">↻ Cập nhật báo cáo</button><button type="button" id="printRevenue" class="secondary">🖨️ In báo cáo</button></div>
+      </div>
+      <div class="grid" style="margin-top:12px">
+        <div class="item"><small>Doanh thu đã thu</small><h2 id="monthlyRevenueTotal">0 ₫</h2></div>
+        <div class="item"><small>Tổng cần thanh toán</small><h3 id="monthlyBilledTotal">0 ₫</h3></div>
+        <div class="item"><small>Còn phải thu</small><h3 id="monthlyDueTotal">0 ₫</h3></div>
+        <div class="item"><small>Số lượt có phát sinh thu</small><h3 id="monthlyPaymentCount">0</h3></div>
+      </div>
+      <h4>Doanh thu theo hình thức thanh toán</h4>
+      <div id="monthlyRevenueMethods"></div>
+      <p id="monthlyRevenueNote" class="muted">Báo cáo tính theo ngày thu tiền. Khoản thanh toán cũ chưa có ngày thu sẽ tạm dùng ngày khám/lịch hẹn.</p>
+    </section>
     <hr style="border:0;border-top:1px solid var(--border);margin:18px 0">
     <h3>📒 Danh sách thanh toán</h3>
     <label for="paymentSearch">Tìm theo tên bệnh nhi hoặc số điện thoại</label><input id="paymentSearch" placeholder="Nhập tên trẻ hoặc số điện thoại">
@@ -552,7 +570,7 @@ function startLiveListeners() {
   stopPayments=db.collection('payments').onSnapshot(snapshot=>{
     payments=snapshot.docs.map(doc=>({...doc.data(),firebaseId:doc.id}));
     payments.sort((a,b)=>safeText(b.date).localeCompare(safeText(a.date)));
-    renderPayments(); renderAppointments();
+    renderPayments(); renderMonthlyRevenue(); renderAppointments();
     const selected=$('paymentVisit')?.value;
     if(selected) loadPaymentForSelection(selected);
   },error=>message('paymentMessage','Không tải được dữ liệu thanh toán: '+error.message,'error'));
@@ -955,7 +973,7 @@ async function loadPaymentForSelection(selection){
     const p=snap.exists?snap.data():null;
     $('consultationFee').value=p?.consultationFee??0;$('medicineFee').value=p?.medicineFee??0;
     $('otherFee').value=p?.otherFee??0;$('discountFee').value=p?.discountFee??0;
-    $('paidAmount').value=p?.paidAmount??0;$('paymentMethod').value=p?.method||'Tiền mặt';$('paymentNote').value=p?.note||'';
+    $('paidAmount').value=p?.paidAmount??0;$('collectedDate').value=p?.collectedDate||p?.date||todayLocal();$('paymentMethod').value=p?.method||'Tiền mặt';$('paymentNote').value=p?.note||'';
     message('paymentMessage',p?'Đã tải khoản thanh toán đã lưu. Bạn có thể chỉnh sửa và lưu lại.':'Chưa có khoản thu cho lượt này. Nhập số tiền rồi lưu.','');
     calculatePayment();
   }catch(error){message('paymentMessage','Không tải được khoản thanh toán: '+error.message,'error');}
@@ -963,7 +981,7 @@ async function loadPaymentForSelection(selection){
 $('paymentVisit').addEventListener('change',()=>loadPaymentForSelection($('paymentVisit').value));
 $('resetPayment').addEventListener('click',()=>{
   ['consultationFee','medicineFee','otherFee','discountFee','paidAmount'].forEach(id=>$(id).value=0);
-  $('paymentMethod').value='Tiền mặt';$('paymentNote').value='';calculatePayment();
+  $('paymentMethod').value='Tiền mặt';$('collectedDate').value=todayLocal();$('paymentNote').value='';calculatePayment();
   message('paymentMessage','Đã làm mới các ô nhập. Nếu lượt khám đã có khoản thu, chọn lại lượt khám để tải dữ liệu đã lưu.','');
 });
 $('savePayment').addEventListener('click',async()=>{
@@ -982,7 +1000,7 @@ $('savePayment').addEventListener('click',async()=>{
   if(totals.paid>totals.total)return message('paymentMessage','Số tiền đã thu không được lớn hơn tổng cần thanh toán.','error');
   const button=$('savePayment');setBusy(button,true,'Đang lưu thanh toán...');
   try{
-    const record={...linked,consultationFee:moneyValue('consultationFee'),medicineFee:moneyValue('medicineFee'),otherFee:moneyValue('otherFee'),discountFee:moneyValue('discountFee'),total:totals.total,paidAmount:totals.paid,dueAmount:totals.due,status:totals.status,method:$('paymentMethod').value,note:$('paymentNote').value.trim(),updatedAt:firebase.firestore.FieldValue.serverTimestamp(),updatedBy:auth.currentUser.email||''};
+    const record={...linked,consultationFee:moneyValue('consultationFee'),medicineFee:moneyValue('medicineFee'),otherFee:moneyValue('otherFee'),discountFee:moneyValue('discountFee'),total:totals.total,paidAmount:totals.paid,dueAmount:totals.due,status:totals.status,collectedDate:$('collectedDate').value||todayLocal(),method:$('paymentMethod').value,note:$('paymentNote').value.trim(),updatedAt:firebase.firestore.FieldValue.serverTimestamp(),updatedBy:auth.currentUser.email||''};
     const ref=db.collection('payments').doc(paymentDocId(selection));
     const old=await ref.get();if(!old.exists)record.createdAt=firebase.firestore.FieldValue.serverTimestamp();
     await ref.set(record,{merge:true});
@@ -991,6 +1009,7 @@ $('savePayment').addEventListener('click',async()=>{
   finally{setBusy(button,false);}
 });
 $('paymentSearch').addEventListener('input',renderPayments);
+renderMonthlyRevenue();
 $('printPayment').addEventListener('click',printPaymentReceipt);
 function printPaymentReceipt(){
   const selection=$('paymentVisit').value;if(!selection)return message('paymentMessage','Vui lòng chọn lượt khám trước khi in phiếu thu.','error');
@@ -1018,6 +1037,48 @@ function renderPayments(){
     div.append(title,info,meta,edit);box.appendChild(div);
   });
 }
+
+function renderMonthlyRevenue(){
+  const monthInput=$('revenueMonth');if(!monthInput)return;
+  const month=monthInput.value||todayLocal().slice(0,7);
+  const rows=payments.filter(p=>String(p.collectedDate||p.date||'').slice(0,7)===month);
+  const paid=rows.reduce((sum,p)=>sum+(Number(p.paidAmount)||0),0);
+  const billed=rows.reduce((sum,p)=>sum+(Number(p.total)||0),0);
+  const due=rows.reduce((sum,p)=>sum+(Number(p.dueAmount)||0),0);
+  const collectedRows=rows.filter(p=>(Number(p.paidAmount)||0)>0);
+  $('monthlyRevenueTotal').textContent=formatMoney(paid);
+  $('monthlyBilledTotal').textContent=formatMoney(billed);
+  $('monthlyDueTotal').textContent=formatMoney(due);
+  $('monthlyPaymentCount').textContent=String(collectedRows.length);
+  const methods=new Map();
+  rows.forEach(p=>{const method=p.method||'Khác';methods.set(method,(methods.get(method)||0)+(Number(p.paidAmount)||0));});
+  const methodBox=$('monthlyRevenueMethods');methodBox.innerHTML='';
+  if(!methods.size){methodBox.innerHTML='<div class="empty">Tháng này chưa có khoản thu.</div>';}
+  else [...methods.entries()].sort((a,b)=>b[1]-a[1]).forEach(([method,amount])=>{
+    const line=document.createElement('div');line.className='item';
+    const label=document.createElement('strong');label.textContent=method;
+    const value=document.createElement('span');value.textContent=formatMoney(amount);
+    line.style.cssText='display:flex;justify-content:space-between;gap:12px;align-items:center;margin:6px 0;padding:10px 12px;';
+    line.append(label,value);methodBox.appendChild(line);
+  });
+  const note=$('monthlyRevenueNote');
+  const legacy=rows.filter(p=>!p.collectedDate).length;
+  note.textContent=`Báo cáo theo ngày thu tiền. Có ${legacy} khoản thanh toán cũ chưa có ngày thu riêng, đang tạm tính theo ngày khám/lịch hẹn.`;
+}
+$('revenueMonth').value=todayLocal().slice(0,7);
+$('revenueMonth').addEventListener('change',renderMonthlyRevenue);
+$('refreshRevenue').addEventListener('click',renderMonthlyRevenue);
+$('printRevenue').addEventListener('click',()=>{
+  renderMonthlyRevenue();
+  const month=$('revenueMonth').value||todayLocal().slice(0,7);
+  const rows=payments.filter(p=>String(p.collectedDate||p.date||'').slice(0,7)===month);
+  const sum=key=>rows.reduce((n,p)=>n+(Number(p[key])||0),0);
+  const methodRows=[...new Set(rows.map(p=>p.method||'Khác'))].map(m=>`<tr><td>${escapeHtml(m)}</td><td>${formatMoney(rows.filter(p=>(p.method||'Khác')===m).reduce((n,p)=>n+(Number(p.paidAmount)||0),0))}</td></tr>`).join('');
+  const detailRows=rows.map(p=>`<tr><td>${escapeHtml(p.collectedDate||p.date||'')}</td><td>${escapeHtml(p.child||'')}</td><td>${escapeHtml(p.method||'')}</td><td>${formatMoney(p.paidAmount)}</td><td>${escapeHtml(p.status||'')}</td></tr>`).join('');
+  const w=window.open('','_blank');if(!w){message('paymentMessage','Trình duyệt đang chặn cửa sổ in. Hãy cho phép cửa sổ bật lên.','error');return;}
+  w.document.write(`<!doctype html><html lang="vi"><head><meta charset="utf-8"><title>Báo cáo doanh thu ${month}</title><style>body{font-family:'Times New Roman',serif;margin:28px;color:#222}.print-clinic{display:flex;align-items:center;justify-content:center;gap:12px}.print-clinic img{width:70px;height:70px}h1,h2{text-align:center;color:#08794f}table{width:100%;border-collapse:collapse;margin:14px 0}td,th{border:1px solid #bbb;padding:8px;text-align:left}.sum{font-weight:bold;font-size:18px}</style></head><body>${clinicPrintHeader()}<h2>BÁO CÁO DOANH THU THÁNG ${escapeHtml(month)}</h2><p class="sum">Doanh thu đã thu: ${formatMoney(sum('paidAmount'))}</p><p>Tổng cần thanh toán: ${formatMoney(sum('total'))} • Còn phải thu: ${formatMoney(sum('dueAmount'))}</p><h3>Doanh thu theo hình thức thanh toán</h3><table><tr><th>Hình thức</th><th>Đã thu</th></tr>${methodRows||'<tr><td colspan="2">Không có dữ liệu</td></tr>'}</table><h3>Chi tiết các khoản thu</h3><table><tr><th>Ngày thu</th><th>Bệnh nhi</th><th>Hình thức</th><th>Số tiền đã thu</th><th>Trạng thái</th></tr>${detailRows||'<tr><td colspan="5">Không có dữ liệu</td></tr>'}</table><script>window.onload=()=>window.print();<\/script></body></html>`);
+  w.document.close();
+});
 
 function populateHistoryFilter(){const select=$('historyPatientFilter');if(!select)return;const old=select.value;select.innerHTML='';const all=document.createElement('option');all.value='';all.textContent='-- Tất cả bệnh nhi --';select.appendChild(all);patients.forEach(p=>{const o=document.createElement('option');o.value=p.firebaseId;o.textContent=p.child||'Chưa có tên';select.appendChild(o);});if(patients.some(p=>p.firebaseId===old))select.value=old;}
 $('historyPatientFilter').addEventListener('change',renderHistory);
