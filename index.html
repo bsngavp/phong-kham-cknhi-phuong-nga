@@ -1017,13 +1017,22 @@ $('savePayment').addEventListener('click',async()=>{
   const button=$('savePayment');setBusy(button,true,'Đang lưu thanh toán...');
   try{
     const record={...linked,consultationFee:moneyValue('consultationFee'),medicineFee:moneyValue('medicineFee'),otherFee:moneyValue('otherFee'),discountFee:moneyValue('discountFee'),total:totals.total,paidAmount:totals.paid,dueAmount:totals.due,status:totals.status,collectedDate:$('collectedDate').value||todayLocal(),method:$('paymentMethod').value,note:$('paymentNote').value.trim(),updatedAt:firebase.firestore.FieldValue.serverTimestamp(),updatedBy:auth.currentUser.email||''};
-    const ref=db.collection('payments').doc(paymentDocId(selection));
+    const docId=paymentDocId(selection);
+    const ref=db.collection('payments').doc(docId);
     const old=await ref.get();if(!old.exists)record.createdAt=firebase.firestore.FieldValue.serverTimestamp();
     await ref.set(record,{merge:true});
     const savedPayment={...record,firebaseId:docId};
     const existingIndex=payments.findIndex(p=>p.firebaseId===docId);
     if(existingIndex>=0)payments[existingIndex]=savedPayment;else payments.push(savedPayment);
     renderPayments();renderMonthlyRevenue();renderAppointments();
+    // Đọc lại tài liệu vừa lưu để giao diện luôn phản ánh đúng trạng thái trên Firestore.
+    const verifySnap=await ref.get();
+    if(verifySnap.exists){
+      const verified={...verifySnap.data(),firebaseId:docId};
+      const verifiedIndex=payments.findIndex(p=>p.firebaseId===docId);
+      if(verifiedIndex>=0)payments[verifiedIndex]=verified;else payments.push(verified);
+      renderPayments();renderMonthlyRevenue();renderAppointments();
+    }
     if(record.status==='Đã thanh toán'){
       message('paymentMessage','✓ Đã thanh toán đầy đủ. Trạng thái đã được cập nhật trong danh sách thanh toán và lịch hẹn.','success');
     }else if(record.status==='Thanh toán một phần'){
